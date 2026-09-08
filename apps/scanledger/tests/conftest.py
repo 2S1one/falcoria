@@ -11,14 +11,20 @@ import os
 from collections.abc import AsyncIterator
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import URL, text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-# Import each package's models module here so SQLModel.metadata is complete
-# before create_all(). Added as packages land: projects, ips, history.
-from falcoria_scanledger.auth import models  # noqa: F401  # registers UserDB on SQLModel.metadata
+# `auth.models` is imported for its side effect: it registers UserDB on
+# SQLModel.metadata so `_build_schema`'s create_all() sees the table. Add each
+# new package's models module here as it lands (projects, ips, history).
+from falcoria_scanledger.auth import models  # noqa: F401
+from falcoria_scanledger.auth.dependencies import require_admin
+from falcoria_scanledger.auth.models import UserDB
+from falcoria_scanledger.database import get_session
+from falcoria_scanledger.main import create_app
 
 _MAINTENANCE_DB = "scanledger"
 _TEST_DB = "scanledger_test"
@@ -85,3 +91,28 @@ async def session(_schema: None) -> AsyncIterator[AsyncSession]:
             await transaction.rollback()
         await connection.close()
         await engine.dispose()
+
+
+@pytest.fixture
+async def client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """HTTP client for the app; the DB session and the admin gate are overridden.
+
+    `get_session` yields the test's rolled-back `session` and mirrors the real
+    dependency's commit/rollback; `require_admin` is stubbed so router tests
+    exercise endpoint logic, not the auth chain (that is `test_admin_gate.py`).
+    """
+
+    async def _session_override() -> AsyncIterator[AsyncSession]:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+    app = create_app()
+    app.dependency_overrides[get_session] = _session_override
+    app.dependency_overrides[require_admin] = lambda: UserDB(username="test-admin", is_admin=True)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as http_client:
+        yield http_client

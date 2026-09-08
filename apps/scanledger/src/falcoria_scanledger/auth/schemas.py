@@ -13,3 +13,9 @@ class UserCreate(BaseModel):
         gt=0,
         description="Token lifetime in seconds; omit for a token that never expires.",
     )
+
+
+class TokenOut(BaseModel):
+    """The plaintext bearer token, returned once when it is issued."""
+
+    token: str
