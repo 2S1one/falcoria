@@ -1,6 +1,10 @@
 """Identity service: transaction-scoped user and token operations."""
 
+import uuid
+from collections.abc import Sequence
+
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from falcoria_scanledger.auth import tokens
@@ -24,6 +28,39 @@ async def create_user(session: AsyncSession, data: UserCreate) -> tuple[UserDB, 
     session.add(user)
     await session.flush()
     return user, plaintext
+
+
+async def list_users(session: AsyncSession) -> Sequence[UserDB]:
+    """Returns every user, ordered by username."""
+    return (await session.exec(select(UserDB).order_by(UserDB.username))).all()
+
+
+async def delete_user(session: AsyncSession, user_id: uuid.UUID) -> bool:
+    """Deletes `user_id`; returns whether a row was removed."""
+    user = await session.get(UserDB, user_id)
+    if user is None:
+        return False
+    await session.delete(user)
+    await session.flush()
+    return True
+
+
+async def rotate_token(
+    session: AsyncSession, user_id: uuid.UUID, lifetime_seconds: int | None
+) -> str | None:
+    """Issues a fresh token for `user_id` and returns the plaintext, or None if unknown.
+
+    The previous token is revoked — its hash is overwritten. Flushes; the
+    surrounding request transaction commits.
+    """
+    user = await session.get(UserDB, user_id)
+    if user is None:
+        return None
+    plaintext = tokens.generate_token()
+    user.hashed_token = tokens.hash_token(plaintext)
+    user.token_expires_at = tokens.expiry_from(lifetime_seconds)
+    await session.flush()
+    return plaintext
 
 
 async def _upsert_primary_user(session: AsyncSession, username: str, token: str) -> None:
