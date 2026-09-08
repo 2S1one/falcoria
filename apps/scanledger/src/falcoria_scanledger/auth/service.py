@@ -1,6 +1,6 @@
 """Identity service: transaction-scoped user and token operations."""
 
-from sqlmodel import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from falcoria_scanledger.auth import tokens
@@ -26,21 +26,35 @@ async def create_user(session: AsyncSession, data: UserCreate) -> tuple[UserDB, 
     return user, plaintext
 
 
-async def _ensure_admin_account(session: AsyncSession, username: str, token: str) -> None:
-    """Adds an admin account with `username` if it does not already exist."""
-    existing = await session.exec(select(UserDB.id).where(UserDB.username == username))
-    if existing.first() is None:
-        session.add(UserDB(username=username, is_admin=True, hashed_token=tokens.hash_token(token)))
+async def _upsert_primary_user(session: AsyncSession, username: str, token: str) -> None:
+    """Inserts an admin account or re-syncs its token hash to the given value."""
+    digest = tokens.hash_token(token)
+    statement = (
+        pg_insert(UserDB)
+        .values(username=username, is_admin=True, hashed_token=digest)
+        .on_conflict_do_update(
+            index_elements=["username"],
+            set_={"hashed_token": digest, "is_admin": True},
+        )
+    )
+    connection = await session.connection()
+    await connection.execute(statement)
 
 
 async def ensure_primary_users(
     session: AsyncSession, *, admin_token: str, tasker_token: str
 ) -> None:
-    """Seeds the `admin` and `tasker` accounts when absent; a no-op otherwise.
+    """Creates or re-syncs the `admin` and `tasker` accounts from configuration.
 
-    Idempotent — safe on every startup. Both are admin accounts with
-    non-expiring tokens taken from configuration.
+    Runs on every startup: concurrency-safe (atomic ``INSERT ... ON CONFLICT DO
+    UPDATE`` keyed on username) and it overwrites each account's stored token
+    hash with the configured value, so rotating a token in the environment takes
+    effect on the next boot.
+
+    Raises:
+        ValueError: `admin_token` and `tasker_token` are equal.
     """
-    await _ensure_admin_account(session, "admin", admin_token)
-    await _ensure_admin_account(session, "tasker", tasker_token)
-    await session.flush()
+    if admin_token == tasker_token:
+        raise ValueError("admin and tasker tokens must differ")
+    await _upsert_primary_user(session, "admin", admin_token)
+    await _upsert_primary_user(session, "tasker", tasker_token)
