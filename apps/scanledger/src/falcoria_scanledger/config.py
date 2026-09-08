@@ -27,17 +27,28 @@ class BaseAppSettings(BaseSettings):
 
 
 class AppSettings(BaseAppSettings):
-    """Process-level settings: environment, debug flag, API mount prefix."""
+    """Process-level settings: environment, debug flag, API prefix, seed tokens.
+
+    Attributes:
+        admin_token: bearer token for the seeded ``admin`` account. Env
+            ``SCANLEDGER_ADMIN_TOKEN``. Re-applied to the DB on every startup.
+        tasker_token: bearer token for the seeded ``tasker`` account. Env
+            ``SCANLEDGER_TASKER_TOKEN``. Must differ from ``admin_token``.
+    """
 
     env: Env = Env.LOCAL
     debug: bool = False
     api_prefix: str = "/api"
+    admin_token: SecretStr
+    tasker_token: SecretStr
 
 
 @lru_cache
 def get_app_settings() -> AppSettings:
     """Returns the process settings, read from the environment on first call."""
-    return AppSettings()
+    # pydantic-settings fills the required token fields from the environment;
+    # pyright only sees the synthesised __init__ and flags them as missing.
+    return AppSettings()  # pyright: ignore[reportCallIssue]
 
 
 class DatabaseSettings(BaseAppSettings):

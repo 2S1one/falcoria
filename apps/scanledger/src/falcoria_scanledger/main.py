@@ -4,18 +4,31 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
+from sqlmodel import SQLModel
 
 from falcoria_scanledger.auth.dependencies import require_admin
 from falcoria_scanledger.auth.router import router as auth_router
+from falcoria_scanledger.auth.service import ensure_primary_users
 from falcoria_scanledger.config import get_app_settings
 from falcoria_scanledger.constants import Tag
-from falcoria_scanledger.database import dispose_engine
+from falcoria_scanledger.database import dispose_engine, get_engine, get_sessionmaker
 from falcoria_scanledger.exceptions import register_exception_handlers
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    """Disposes the database engine on shutdown; nothing else to wire yet."""
+    """Bootstraps the schema, seeds the service accounts, disposes the engine on exit."""
+    settings = get_app_settings()
+    # TEMPORARY: Alembic owns the schema from build step 6 — drop this create_all then.
+    async with get_engine().begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+    async with get_sessionmaker()() as session:
+        await ensure_primary_users(
+            session,
+            admin_token=settings.admin_token.get_secret_value(),
+            tasker_token=settings.tasker_token.get_secret_value(),
+        )
+        await session.commit()
     yield
     await dispose_engine()
 
