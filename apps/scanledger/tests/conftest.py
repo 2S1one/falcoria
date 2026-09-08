@@ -11,6 +11,7 @@ import os
 from collections.abc import AsyncIterator
 
 import pytest
+from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import URL, text
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -93,13 +94,11 @@ async def session(_schema: None) -> AsyncIterator[AsyncSession]:
         await engine.dispose()
 
 
-@pytest.fixture
-async def client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
-    """HTTP client for the app; the DB session and the admin gate are overridden.
+def _app_with_test_session(session: AsyncSession, *, stub_admin: bool) -> FastAPI:
+    """Builds an app whose `get_session` yields `session` (mirroring commit/rollback).
 
-    `get_session` yields the test's rolled-back `session` and mirrors the real
-    dependency's commit/rollback; `require_admin` is stubbed so router tests
-    exercise endpoint logic, not the auth chain (that is `test_admin_gate.py`).
+    With `stub_admin` the `require_admin` gate is replaced by a synthetic admin so
+    router tests exercise endpoint logic; without it the real auth chain runs.
     """
 
     async def _session_override() -> AsyncIterator[AsyncSession]:
@@ -112,7 +111,24 @@ async def client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
 
     app = create_app()
     app.dependency_overrides[get_session] = _session_override
-    app.dependency_overrides[require_admin] = lambda: UserDB(username="test-admin", is_admin=True)
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as http_client:
+    if stub_admin:
+        app.dependency_overrides[require_admin] = lambda: UserDB(
+            username="test-admin", is_admin=True
+        )
+    return app
+
+
+@pytest.fixture
+async def client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """HTTP client with the DB session and the admin gate both overridden."""
+    app = _app_with_test_session(session, stub_admin=True)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http_client:
+        yield http_client
+
+
+@pytest.fixture
+async def anon_client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """HTTP client with only the DB session overridden — the real auth chain runs."""
+    app = _app_with_test_session(session, stub_admin=False)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http_client:
         yield http_client
