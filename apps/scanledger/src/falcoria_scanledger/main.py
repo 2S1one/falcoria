@@ -7,13 +7,15 @@ from fastapi import FastAPI
 
 from falcoria_scanledger.config import get_app_settings
 from falcoria_scanledger.constants import Tag
+from falcoria_scanledger.database import dispose_engine
 from falcoria_scanledger.exceptions import register_exception_handlers
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    """Startup and shutdown hook; nothing to wire until the database is added."""
+    """Disposes the database engine on shutdown; nothing else to wire yet."""
     yield
+    await dispose_engine()
 
 
 def create_app() -> FastAPI:
