@@ -1,0 +1,23 @@
+[project]
+name = "falcoria-scanledger"
+version = "0.1.0"
+description = "Falcoria system of record for port-scan results."
+requires-python = ">=3.12"
+dependencies = [
+    "falcoria-contracts",
+    "fastapi",
+    "sqlmodel",
+    "asyncpg",
+    "alembic",
+    "pydantic-settings",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/falcoria_scanledger"]
+
+# falcoria-contracts is resolved from the workspace via the root pyproject.toml's
+# [tool.uv.sources]; no per-member table needed.

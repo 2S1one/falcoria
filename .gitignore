@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+
+# Virtual env
+.venv/
+
+# uv
+# uv.lock is committed on purpose
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Refactor working area — scratch planning notes, not tracked.
+# ADRs from refactor/decisions/ move into docs/decisions/ when docs/ is brought in.
+/refactor/
