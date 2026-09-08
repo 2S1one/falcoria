@@ -17,7 +17,8 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 # Import each package's models module here so SQLModel.metadata is complete
-# before create_all(). Added as packages land: auth, projects, ips, history.
+# before create_all(). Added as packages land: projects, ips, history.
+from falcoria_scanledger.auth import models  # noqa: F401  # registers UserDB on SQLModel.metadata
 
 _MAINTENANCE_DB = "scanledger"
 _TEST_DB = "scanledger_test"
@@ -78,6 +79,9 @@ async def session(_schema: None) -> AsyncIterator[AsyncSession]:
         async with AsyncSession(bind=connection, expire_on_commit=False) as s:
             yield s
     finally:
-        await transaction.rollback()
+        # A failed flush (e.g. an IntegrityError the test asserts on) already
+        # rolls the transaction back; only roll back one that is still open.
+        if transaction.is_active:
+            await transaction.rollback()
         await connection.close()
         await engine.dispose()
