@@ -62,17 +62,41 @@ enforce:
 - Don't silence a checker (`# noqa` / `# type: ignore` / `# pragma: no cover`) to get the
   gate green — fix the cause. A suppression is allowed only when genuinely unavoidable, and
   only with a specific rule code plus a one-line reason.
-- Docstrings on the public surface (`D101/102/103`, google convention). A docstring that
-  only restates the name is worse than none: give a one-line plain-language summary,
-  `Raises:` for exceptions a caller would catch, and a short paragraph for non-obvious
-  behaviour, edge cases or side effects.
 - Model transformations via `model_dump()` / `model_validate()` — don't hand-list fields.
+
+### Docstrings
+
+Ruff `D` (google convention) enforces presence on the public surface (`D101/102/103`);
+private names, `tests/` and `migrations/` are exempt. What the tool cannot check:
+
+- **Summary:** one physical line (≤ ~80 chars), capitalised, ending with a period.
+  Descriptive voice — "Returns …", "Reconciles …" — not "Return", not "This function …".
+- **Sections** (`Args:` / `Returns:` / `Raises:` / `Yields:`) only when they add what the
+  signature and type annotations do not already say. Under the google convention `Args:`
+  is all-or-nothing per function — document every parameter or none.
+- **Body paragraph** only for the non-obvious: side effects, commit / transaction
+  behaviour, invariants, units, what `None` / an empty result means, a precondition on the
+  inputs, and — for a pure function — the rule it implements and what it deliberately does
+  *not* do.
+- **Narration test:** delete any line that re-describes the code step by step; that is a
+  `# why` comment's job, and only for the *why*.
+- **Pydantic schemas:** one line on the class (what the payload is, where it is used);
+  document fields with `Field(description=...)`, not an `Attributes:` block. A `Settings`
+  class *may* use `Attributes:` — the env-var names have no other home.
+- **FastAPI handlers:** the docstring is the OpenAPI description — keep it client-facing.
+  The error contract goes in `responses=` / `status_code`, never a `Raises:` block. Do not
+  also pass `description=` (it overrides the docstring).
+- **Custom exception classes:** one line stating *when* it is raised.
+- **Never:** restate the name; repeat an annotated type; open with "This function …" /
+  "A helper that …"; put change history, TODO or author tags in a docstring.
 
 ## Git workflow
 
 - Branch before committing on `main`.
 - Never rebase, squash, amend or force-push commits that are already pushed.
-- AI-assisted commits carry a `Co-Authored-By:` trailer naming the model.
+- No attribution trailers — never add `Co-Authored-By` or a session/assistant id to a
+  commit message.
+- Conventional Commits format.
 - Never commit secrets, credentials, or real scan data (IPs, hostnames, emails). Redact
   them from logs and test fixtures.
 
