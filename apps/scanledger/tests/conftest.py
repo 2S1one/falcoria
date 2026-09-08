@@ -75,15 +75,17 @@ def _schema() -> None:
 async def session(_schema: None) -> AsyncIterator[AsyncSession]:
     """Yields a session inside a transaction that is rolled back after the test.
 
-    A ``commit()`` in the code under test lands on a savepoint (SQLAlchemy opens
-    one because the bound connection is already in a transaction), so committing
-    services still observe their writes while nothing persists between tests.
+    ``create_savepoint`` mode means every ``commit()`` / ``rollback()`` in the code
+    under test acts on a SAVEPOINT, never the outer transaction — so committing
+    services observe their writes while nothing persists between tests.
     """
     engine = create_async_engine(_pg_url(_TEST_DB))
     connection = await engine.connect()
     transaction = await connection.begin()
     try:
-        async with AsyncSession(bind=connection, expire_on_commit=False) as s:
+        async with AsyncSession(
+            bind=connection, expire_on_commit=False, join_transaction_mode="create_savepoint"
+        ) as s:
             yield s
     finally:
         # A failed flush (e.g. an IntegrityError the test asserts on) already

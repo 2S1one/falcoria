@@ -64,14 +64,16 @@ async def rotate_token(
 
 
 async def _upsert_primary_user(session: AsyncSession, username: str, token: str) -> None:
-    """Inserts an admin account or re-syncs its token hash to the given value."""
+    """Inserts an admin account or re-syncs it to a non-expiring config-owned token."""
     digest = tokens.hash_token(token)
+    # token_expires_at is forced back to NULL: a prior API rotation may have set a
+    # finite expiry, and these accounts are non-expiring by contract.
     statement = (
         pg_insert(UserDB)
-        .values(username=username, is_admin=True, hashed_token=digest)
+        .values(username=username, is_admin=True, hashed_token=digest, token_expires_at=None)
         .on_conflict_do_update(
             index_elements=["username"],
-            set_={"hashed_token": digest, "is_admin": True},
+            set_={"hashed_token": digest, "is_admin": True, "token_expires_at": None},
         )
     )
     connection = await session.connection()

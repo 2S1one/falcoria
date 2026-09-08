@@ -42,6 +42,8 @@ async def create_user(
     try:
         _, plaintext = await service.create_user(session, body)
     except IntegrityError as exc:
+        # The only violation reachable here is UNIQUE(username); revisit if `users`
+        # gains other constraints (inspect exc.orig for the constraint name then).
         raise Conflict(f"User '{body.username}' already exists.") from exc
     return TokenOut(token=plaintext)
 

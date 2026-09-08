@@ -20,6 +20,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Bootstraps the schema, seeds the service accounts, disposes the engine on exit."""
     settings = get_app_settings()
     # TEMPORARY: Alembic owns the schema from build step 6 — drop this create_all then.
+    # Not safe for concurrent cold starts (create_all races); single process until then.
     async with get_engine().begin() as connection:
         await connection.run_sync(SQLModel.metadata.create_all)
     async with get_sessionmaker()() as session:
