@@ -4,9 +4,27 @@ import uuid
 from typing import Any
 
 from sqlalchemy import Column, ForeignKey, Integer, String, UniqueConstraint, Uuid
-from sqlmodel import JSON, Field, SQLModel
+from sqlmodel import JSON, Field, Relationship, SQLModel
 
 from falcoria_contracts.enums import PortProtocol, PortState
+
+
+class ObservedHostnameIPLink(SQLModel, table=True):
+    """Join row linking an observed hostname to an IP it was reported for."""
+
+    __tablename__ = "observed_hostname_ip_link"  # pyright: ignore[reportAssignmentType]
+
+    ip_id: int = Field(
+        sa_column=Column(Integer, ForeignKey("ips.id", ondelete="CASCADE"), primary_key=True)
+    )
+    hostname_id: int = Field(
+        sa_column=Column(
+            Integer,
+            ForeignKey("observed_hostnames.id", ondelete="CASCADE"),
+            primary_key=True,
+            index=True,
+        )
+    )
 
 
 class IPDB(SQLModel, table=True):
@@ -32,6 +50,11 @@ class IPDB(SQLModel, table=True):
             Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
         )
     )
+
+    ports: list["PortDB"] = Relationship(
+        back_populates="ip", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
+    hostnames: list["ObservedHostnameDB"] = Relationship(link_model=ObservedHostnameIPLink)
 
 
 class PortDB(SQLModel, table=True):
@@ -70,6 +93,8 @@ class PortDB(SQLModel, table=True):
         )
     )
 
+    ip: IPDB | None = Relationship(back_populates="ports")
+
 
 class ObservedHostnameDB(SQLModel, table=True):
     """A hostname a scan reported for some IP in this project.
@@ -88,23 +113,5 @@ class ObservedHostnameDB(SQLModel, table=True):
     project_id: uuid.UUID = Field(
         sa_column=Column(
             Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
-        )
-    )
-
-
-class ObservedHostnameIPLink(SQLModel, table=True):
-    """Join row linking an observed hostname to an IP it was reported for."""
-
-    __tablename__ = "observed_hostname_ip_link"  # pyright: ignore[reportAssignmentType]
-
-    ip_id: int = Field(
-        sa_column=Column(Integer, ForeignKey("ips.id", ondelete="CASCADE"), primary_key=True)
-    )
-    hostname_id: int = Field(
-        sa_column=Column(
-            Integer,
-            ForeignKey("observed_hostnames.id", ondelete="CASCADE"),
-            primary_key=True,
-            index=True,
         )
     )
