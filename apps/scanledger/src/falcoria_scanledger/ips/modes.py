@@ -50,6 +50,7 @@ def _created(incoming: IPIn) -> ChangeSet:
     return ChangeSet(
         ip=incoming.ip,
         created=True,
+        changed=True,
         endtime=incoming.endtime,
         status=incoming.status,
         os=incoming.os,
@@ -88,12 +89,16 @@ def _updated(policy: _Policy, stored: StoredIP, incoming: IPIn) -> ChangeSet:
     known = set(stored.hostnames)
     new_hostnames = [h for h in incoming.hostnames if h not in known]
 
+    status = incoming.status if policy.refresh_meta and incoming.status else stored.status
+    os = incoming.os if policy.refresh_meta and incoming.os else stored.os
+
     return ChangeSet(
         ip=incoming.ip,
         created=False,
+        changed=bool(changes or new_hostnames) or status != stored.status or os != stored.os,
         endtime=incoming.endtime,
-        status=incoming.status if policy.refresh_meta and incoming.status else stored.status,
-        os=incoming.os if policy.refresh_meta and incoming.os else stored.os,
+        status=status,
+        os=os,
         open_ports=list(kept.values()),
         port_changes=changes,
         hostnames=[*stored.hostnames, *new_hostnames],

@@ -55,7 +55,7 @@ async def test_import_scan_returns_created_addresses(
     )
 
     assert resp.status_code == 201
-    assert resp.json() == {"created": ["45.33.32.156"], "updated": []}
+    assert resp.json() == {"created": ["45.33.32.156"], "updated": [], "unchanged": []}
 
 
 async def test_list_and_get_ip_shape(anon_client: AsyncClient, session: AsyncSession) -> None:
@@ -101,7 +101,21 @@ async def test_create_ips_structured(anon_client: AsyncClient, session: AsyncSes
     )
 
     assert resp.status_code == 201
-    assert resp.json() == {"created": ["1.2.3.4"], "updated": []}
+    assert resp.json() == {"created": ["1.2.3.4"], "updated": [], "unchanged": []}
+
+
+async def test_insert_reimport_reports_unchanged(
+    anon_client: AsyncClient, session: AsyncSession
+) -> None:
+    headers = await _headers(session, "admin")
+    pid = await _project(anon_client, headers)
+    body = [{"ip": "1.2.3.4", "endtime": 100, "ports": [{"number": 80}]}]
+    await anon_client.post(_ips_url(pid), params={"mode": "insert"}, json=body, headers=headers)
+
+    resp = await anon_client.post(
+        _ips_url(pid), params={"mode": "insert"}, json=body, headers=headers
+    )
+    assert resp.json() == {"created": [], "updated": [], "unchanged": ["1.2.3.4"]}
 
 
 async def test_delete_ip_then_404(anon_client: AsyncClient, session: AsyncSession) -> None:

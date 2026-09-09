@@ -67,6 +67,7 @@ def test_new_ip_is_identical_for_every_mode(mode: ImportMode) -> None:
     cs = apply_mode(mode, None, incoming)
 
     assert cs.created is True
+    assert cs.changed is True
     assert _nums(cs.open_ports) == {80}  # the closed port is dropped
     assert [(c.change_type, c.new_value) for c in cs.port_changes] == [
         (PortChangeType.STATE, "open")
@@ -88,6 +89,7 @@ def test_insert_existing_merges_hostnames_only() -> None:
     cs = apply_mode(ImportMode.INSERT, stored, incoming)
 
     assert cs.created is False
+    assert cs.changed is True  # a hostname was added
     assert _nums(cs.open_ports) == {22, 80}  # 443 not added
     assert next(p for p in cs.open_ports if p.number == 80).service == "http"  # not refreshed
     assert cs.port_changes == []
@@ -171,6 +173,7 @@ def test_insert_existing_no_hostname_change_is_a_noop_changeset() -> None:
     incoming = _ipin(ports=[_p(80), _p(443)], hostnames=["a"])
     cs = apply_mode(ImportMode.INSERT, stored, incoming)
 
+    assert cs.changed is False
     assert cs.port_changes == []
     assert cs.new_hostnames == []
     assert _nums(cs.open_ports) == {80}

@@ -90,11 +90,14 @@ class ChangeSet(BaseModel):
     ``open_ports`` is the full resulting open-port set to persist; the caller
     reconciles the stored rows to it. ``port_changes`` are the history rows.
     ``endtime`` is the scan end time — first_seen / last_seen and every history
-    row's created_at.
+    row's created_at. ``changed`` is False when an existing IP was seen but not
+    modified (a port / hostname / status / OS change would set it); it is always
+    True for a newly created IP.
     """
 
     ip: str
     created: bool
+    changed: bool
     endtime: int
     status: str | None = None
     os: str | None = None
@@ -117,17 +120,19 @@ class IPOut(BaseModel):
 
 
 class IPImportResult(BaseModel):
-    """Summary of an import: which addresses were created versus updated."""
+    """Summary of an import: created / modified / seen-but-unchanged addresses."""
 
     created: list[str] = Field(default_factory=list)
     updated: list[str] = Field(default_factory=list)
+    unchanged: list[str] = Field(default_factory=list)
 
     @classmethod
     def from_changesets(cls, changesets: list[ChangeSet]) -> "IPImportResult":
-        """Partition change sets by whether their IP was newly created."""
+        """Partition change sets into created / updated / unchanged addresses."""
         return cls(
             created=[cs.ip for cs in changesets if cs.created],
-            updated=[cs.ip for cs in changesets if not cs.created],
+            updated=[cs.ip for cs in changesets if not cs.created and cs.changed],
+            unchanged=[cs.ip for cs in changesets if not cs.created and not cs.changed],
         )
 
 
