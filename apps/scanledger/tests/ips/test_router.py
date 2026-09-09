@@ -132,6 +132,24 @@ async def test_import_bad_xml_returns_400(anon_client: AsyncClient, session: Asy
     assert resp.status_code == 400
 
 
+async def test_import_over_size_limit_returns_413(
+    anon_client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from falcoria_scanledger.config import get_app_settings
+
+    monkeypatch.setattr(get_app_settings(), "max_report_bytes", 64)
+    headers = await _headers(session, "admin")
+    pid = await _project(anon_client, headers)
+
+    resp = await anon_client.post(
+        _ips_url(pid, "/import"),
+        params={"mode": "insert"},
+        files={"report": ("scan.xml", b"x" * 128, "application/xml")},
+        headers=headers,
+    )
+    assert resp.status_code == 413
+
+
 async def test_non_member_is_forbidden(anon_client: AsyncClient, session: AsyncSession) -> None:
     owner = await _headers(session, "owner")
     pid = await _project(anon_client, owner)

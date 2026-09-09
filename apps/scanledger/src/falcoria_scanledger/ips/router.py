@@ -13,9 +13,10 @@ from pydantic import ValidationError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from falcoria_contracts.enums import ImportMode
+from falcoria_scanledger.config import get_app_settings
 from falcoria_scanledger.constants import Tag
 from falcoria_scanledger.database import get_session
-from falcoria_scanledger.exceptions import BadRequest, NotFound
+from falcoria_scanledger.exceptions import BadRequest, NotFound, RequestEntityTooLarge
 from falcoria_scanledger.ips import service
 from falcoria_scanledger.ips.schemas import IPDeleteRequest, IPImportResult, IPIn, IPOut
 
@@ -24,16 +25,38 @@ router = APIRouter(tags=[Tag.IPS])
 _NOT_FOUND: dict[int | str, dict[str, Any]] = {
     status.HTTP_404_NOT_FOUND: {"description": "No such IP in this project."}
 }
+_CHUNK_BYTES = 64 * 1024
 
 _Session = Annotated[AsyncSession, Depends(get_session)]
 _Mode = Annotated[ImportMode, Query(description="How the import merges with stored state.")]
 _TrackHistory = Annotated[bool, Query(description="Write port-change history rows.")]
 
 
+async def _read_capped(upload: UploadFile, limit: int) -> bytes:
+    """Read the whole upload into memory, rejecting anything past `limit` bytes.
+
+    ``upload.size`` (set by the multipart parser) is checked first; the streamed
+    count is the real guard for transports that leave it unset.
+    """
+    if upload.size is not None and upload.size > limit:
+        raise RequestEntityTooLarge(f"Report exceeds the {limit}-byte limit.")
+    parts: list[bytes] = []
+    total = 0
+    while chunk := await upload.read(_CHUNK_BYTES):
+        total += len(chunk)
+        if total > limit:
+            raise RequestEntityTooLarge(f"Report exceeds the {limit}-byte limit.")
+        parts.append(chunk)
+    return b"".join(parts)
+
+
 @router.post(
     "/import",
     status_code=status.HTTP_201_CREATED,
-    responses={status.HTTP_400_BAD_REQUEST: {"description": "The report could not be parsed."}},
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "The report could not be parsed."},
+        status.HTTP_413_CONTENT_TOO_LARGE: {"description": "The report is too large."},
+    },
 )
 async def import_scan(
     project_id: UUID,
@@ -44,9 +67,10 @@ async def import_scan(
     scanner: Annotated[Literal["nmap"], Query(description="Report format.")] = "nmap",
 ) -> IPImportResult:
     """Imports a scan report file, merging it into the project under `mode`."""
+    data = await _read_capped(report, get_app_settings().max_report_bytes)
     try:
         changesets = await service.import_scan(
-            session, project_id, await report.read(), mode, track_history=track_history
+            session, project_id, data, mode, track_history=track_history
         )
     except (ParseError, ValidationError) as exc:
         raise BadRequest(f"Could not parse the {scanner} report: {exc}") from exc

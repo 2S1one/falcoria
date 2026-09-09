@@ -59,6 +59,13 @@ class Conflict(DetailedHTTPException):
     DETAIL = "Conflict."
 
 
+class RequestEntityTooLarge(DetailedHTTPException):
+    """Raised when an uploaded payload exceeds the configured size limit."""
+
+    STATUS_CODE = status.HTTP_413_CONTENT_TOO_LARGE
+    DETAIL = "Payload too large."
+
+
 def _expose_internal_errors() -> bool:
     """True outside production, where a 500's `str(exc)` is returned to the client too."""
     return get_app_settings().env is not Env.PROD
