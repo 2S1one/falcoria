@@ -72,3 +72,33 @@ class PortChange(BaseModel):
     new_value: str | None = None
     observed_state: str | None = None
     reason: str | None = None
+
+
+class StoredIP(BaseModel):
+    """Snapshot of an IP's persisted state, handed to reconciliation."""
+
+    ip: str
+    status: str | None = None
+    os: str | None = None
+    hostnames: list[str] = Field(default_factory=list)
+    open_ports: list[Port] = Field(default_factory=list)
+
+
+class ChangeSet(BaseModel):
+    """The outcome of reconciling one incoming IP against stored state.
+
+    ``open_ports`` is the full resulting open-port set to persist; the caller
+    reconciles the stored rows to it. ``port_changes`` are the history rows.
+    ``endtime`` is the scan end time — first_seen / last_seen and every history
+    row's created_at.
+    """
+
+    ip: str
+    created: bool
+    endtime: int
+    status: str | None = None
+    os: str | None = None
+    open_ports: list[Port] = Field(default_factory=list)
+    port_changes: list[PortChange] = Field(default_factory=list)
+    hostnames: list[str] = Field(default_factory=list)
+    new_hostnames: list[str] = Field(default_factory=list)
