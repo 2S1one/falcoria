@@ -50,8 +50,8 @@ async def test_import_scan_returns_created_addresses(
     resp = await anon_client.post(
         _ips_url(pid, "/import"),
         params={"mode": "insert"},
-        content=xml,
-        headers={**headers, "content-type": "application/xml"},
+        files={"report": ("scan.xml", xml, "application/xml")},
+        headers=headers,
     )
 
     assert resp.status_code == 201
@@ -65,8 +65,8 @@ async def test_list_and_get_ip_shape(anon_client: AsyncClient, session: AsyncSes
     await anon_client.post(
         _ips_url(pid, "/import"),
         params={"mode": "insert"},
-        content=xml,
-        headers={**headers, "content-type": "application/xml"},
+        files={"report": ("scan.xml", xml, "application/xml")},
+        headers=headers,
     )
 
     listing = await anon_client.get(_ips_url(pid), headers=headers)
@@ -117,6 +117,19 @@ async def test_delete_ip_then_404(anon_client: AsyncClient, session: AsyncSessio
     assert (await anon_client.delete(_ips_url(pid, "/1.2.3.4"), headers=headers)).status_code == 204
     assert (await anon_client.get(_ips_url(pid, "/1.2.3.4"), headers=headers)).status_code == 404
     assert (await anon_client.delete(_ips_url(pid, "/1.2.3.4"), headers=headers)).status_code == 404
+
+
+async def test_import_bad_xml_returns_400(anon_client: AsyncClient, session: AsyncSession) -> None:
+    headers = await _headers(session, "admin")
+    pid = await _project(anon_client, headers)
+
+    resp = await anon_client.post(
+        _ips_url(pid, "/import"),
+        params={"mode": "insert"},
+        files={"report": ("scan.xml", b"not xml at all", "application/xml")},
+        headers=headers,
+    )
+    assert resp.status_code == 400
 
 
 async def test_non_member_is_forbidden(anon_client: AsyncClient, session: AsyncSession) -> None:

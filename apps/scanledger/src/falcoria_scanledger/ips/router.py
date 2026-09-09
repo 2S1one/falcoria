@@ -6,14 +6,16 @@ Mounted by ``main.py`` under ``/projects/{project_id}/ips``, behind
 
 from typing import Annotated, Any, Literal
 from uuid import UUID
+from xml.etree.ElementTree import ParseError
 
-from fastapi import APIRouter, Body, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from pydantic import ValidationError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from falcoria_contracts.enums import ImportMode
 from falcoria_scanledger.constants import Tag
 from falcoria_scanledger.database import get_session
-from falcoria_scanledger.exceptions import NotFound
+from falcoria_scanledger.exceptions import BadRequest, NotFound
 from falcoria_scanledger.ips import service
 from falcoria_scanledger.ips.schemas import IPDeleteRequest, IPImportResult, IPIn, IPOut
 
@@ -28,19 +30,26 @@ _Mode = Annotated[ImportMode, Query(description="How the import merges with stor
 _TrackHistory = Annotated[bool, Query(description="Write port-change history rows.")]
 
 
-@router.post("/import", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/import",
+    status_code=status.HTTP_201_CREATED,
+    responses={status.HTTP_400_BAD_REQUEST: {"description": "The report could not be parsed."}},
+)
 async def import_scan(
     project_id: UUID,
     session: _Session,
     mode: _Mode,
-    report: Annotated[bytes, Body(media_type="application/xml")],
+    report: Annotated[UploadFile, File(description="Scan report file (nmap XML).")],
     track_history: _TrackHistory = True,
     scanner: Annotated[Literal["nmap"], Query(description="Report format.")] = "nmap",
 ) -> IPImportResult:
-    """Imports a scan report, merging it into the project under `mode`."""
-    changesets = await service.import_scan(
-        session, project_id, report, mode, track_history=track_history
-    )
+    """Imports a scan report file, merging it into the project under `mode`."""
+    try:
+        changesets = await service.import_scan(
+            session, project_id, await report.read(), mode, track_history=track_history
+        )
+    except (ParseError, ValidationError) as exc:
+        raise BadRequest(f"Could not parse the {scanner} report: {exc}") from exc
     return IPImportResult.from_changesets(changesets)
 
 
