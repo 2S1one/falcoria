@@ -10,6 +10,7 @@ dependencies = [
     "asyncpg",
     "alembic",
     "pydantic-settings",
+    "defusedxml>=0.7.1",
 ]
 
 [build-system]
