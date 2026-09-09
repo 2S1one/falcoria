@@ -49,10 +49,10 @@ async def create_project(session: AsyncSession, data: ProjectCreate, owner: User
     """
     project = ProjectDB(**data.model_dump())
     session.add(project)
-    # Flush now so a duplicate-name IntegrityError is raised here, where the
-    # router can map it to 409 — not later at the request's commit.
-    await session.flush()
     session.add(ProjectMemberLink(project_id=project.id, user_id=owner.id))
+    # One flush for both inserts, inside the router's try/except: a duplicate
+    # name raises IntegrityError here, not later at the request's commit.
+    await session.flush()
     return project
 
 

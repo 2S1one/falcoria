@@ -93,6 +93,45 @@ async def test_non_member_get_returns_403(anon_client: AsyncClient, session: Asy
     assert (await anon_client.get(f"{_BASE}/{pid}", headers=bob)).status_code == 403
 
 
+async def test_non_member_put_returns_403(anon_client: AsyncClient, session: AsyncSession) -> None:
+    _, alice = await _actor(session, "alice")
+    _, bob = await _actor(session, "bob")
+    created = await anon_client.post(_BASE, json={"name": "a"}, headers=alice)
+    pid = created.json()["id"]
+
+    resp = await anon_client.put(f"{_BASE}/{pid}", json={"comment": "x"}, headers=bob)
+
+    assert resp.status_code == 403
+
+
+async def test_non_member_delete_returns_403(
+    anon_client: AsyncClient, session: AsyncSession
+) -> None:
+    _, alice = await _actor(session, "alice")
+    _, bob = await _actor(session, "bob")
+    created = await anon_client.post(_BASE, json={"name": "a"}, headers=alice)
+    pid = created.json()["id"]
+
+    assert (await anon_client.delete(f"{_BASE}/{pid}", headers=bob)).status_code == 403
+
+
+async def test_non_member_cannot_touch_members(
+    anon_client: AsyncClient, session: AsyncSession
+) -> None:
+    _, alice = await _actor(session, "alice")
+    bob_id, bob = await _actor(session, "bob")
+    created = await anon_client.post(_BASE, json={"name": "a"}, headers=alice)
+    pid = created.json()["id"]
+
+    assert (await anon_client.get(f"{_BASE}/{pid}/members", headers=bob)).status_code == 403
+    add = await anon_client.post(
+        f"{_BASE}/{pid}/members", json={"user_id": str(bob_id)}, headers=bob
+    )
+    assert add.status_code == 403
+    rm = await anon_client.delete(f"{_BASE}/{pid}/members/{bob_id}", headers=bob)
+    assert rm.status_code == 403
+
+
 async def test_unknown_project_get_returns_404(
     anon_client: AsyncClient, session: AsyncSession
 ) -> None:

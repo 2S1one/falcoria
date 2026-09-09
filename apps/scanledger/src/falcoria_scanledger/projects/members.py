@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from uuid import UUID
 
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -24,13 +25,22 @@ async def list_members(session: AsyncSession, project_id: UUID) -> Sequence[User
 async def add_member(session: AsyncSession, project_id: UUID, user_id: UUID) -> bool:
     """Enrols `user_id` in `project_id`; returns False when no such user exists.
 
-    Idempotent: enrolling a user who is already a member is a no-op and still
-    returns True. The caller has already verified the project exists.
+    Idempotent and concurrency-safe: a duplicate enrolment is a no-op
+    (``INSERT ... ON CONFLICT DO NOTHING`` on the composite PK), so two
+    simultaneous requests cannot both insert and leave one to 500 at commit.
+    The caller has already verified the project exists.
     """
     if await session.get(UserDB, user_id) is None:
         return False
-    if await session.get(ProjectMemberLink, (project_id, user_id)) is None:
-        session.add(ProjectMemberLink(project_id=project_id, user_id=user_id))
+    statement = (
+        pg_insert(ProjectMemberLink)
+        .values(project_id=project_id, user_id=user_id)
+        .on_conflict_do_nothing()
+    )
+    # via the connection, matching auth.service — SQLModel's session.exec() is
+    # select-only and session.execute() warns.
+    connection = await session.connection()
+    await connection.execute(statement)
     return True
 
 

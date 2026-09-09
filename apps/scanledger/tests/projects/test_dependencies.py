@@ -54,3 +54,10 @@ async def test_unknown_project_is_not_found(session: AsyncSession) -> None:
 
     with pytest.raises(NotFound):
         await validate_project_access(uuid.uuid4(), session, admin)
+
+
+async def test_unknown_project_is_not_found_for_non_admin(session: AsyncSession) -> None:
+    user = await _user(session, "nobody")
+
+    with pytest.raises(NotFound):
+        await validate_project_access(uuid.uuid4(), session, user)

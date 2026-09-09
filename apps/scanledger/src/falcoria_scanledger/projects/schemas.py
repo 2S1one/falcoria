@@ -5,19 +5,20 @@ import uuid
 from pydantic import BaseModel, ConfigDict, Field
 
 _NAME_PATTERN = r"^[a-zA-Z0-9_-]+$"
+_COMMENT_MAX_LENGTH = 2000
 
 
 class ProjectCreate(BaseModel):
     """Fields supplied to create a new project."""
 
     name: str = Field(min_length=1, max_length=30, pattern=_NAME_PATTERN)
-    comment: str | None = None
+    comment: str | None = Field(default=None, max_length=_COMMENT_MAX_LENGTH)
 
 
 class ProjectUpdate(BaseModel):
     """Mutable project fields; `name` cannot be changed after creation."""
 
-    comment: str | None = None
+    comment: str | None = Field(default=None, max_length=_COMMENT_MAX_LENGTH)
 
 
 class ProjectOut(BaseModel):

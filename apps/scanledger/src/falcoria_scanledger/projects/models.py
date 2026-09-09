@@ -33,6 +33,14 @@ class ProjectMemberLink(SQLModel, table=True):
     project_id: uuid.UUID = Field(
         sa_column=Column(Uuid, ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True)
     )
+    # index=True: the composite PK only indexes user_id as its trailing column, so
+    # a lookup by user_id alone (list_projects, the ON DELETE CASCADE from users)
+    # would otherwise scan the whole table.
     user_id: uuid.UUID = Field(
-        sa_column=Column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+        sa_column=Column(
+            Uuid,
+            ForeignKey("users.id", ondelete="CASCADE"),
+            primary_key=True,
+            index=True,
+        )
     )
