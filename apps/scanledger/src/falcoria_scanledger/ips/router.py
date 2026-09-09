@@ -113,9 +113,12 @@ async def get_ip(project_id: UUID, ip: str, session: _Session) -> IPOut:
 
 
 @router.delete("", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_ips(project_id: UUID, body: IPDeleteRequest, session: _Session) -> None:
-    """Deletes the listed IPs and everything scoped to them."""
-    await service.delete_ips(session, project_id, body.ip_addresses)
+async def delete_ips(
+    project_id: UUID, session: _Session, body: IPDeleteRequest | None = None
+) -> None:
+    """Deletes the project's IPs — all of them, or only `ip_addresses` when a body is given."""
+    addresses = body.ip_addresses if body is not None else None
+    await service.delete_ips(session, project_id, addresses)
 
 
 @router.delete("/{ip}", status_code=status.HTTP_204_NO_CONTENT, responses=_NOT_FOUND)

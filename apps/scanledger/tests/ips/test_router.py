@@ -132,6 +132,23 @@ async def test_import_bad_xml_returns_400(anon_client: AsyncClient, session: Asy
     assert resp.status_code == 400
 
 
+async def test_delete_all_ips_without_body(anon_client: AsyncClient, session: AsyncSession) -> None:
+    headers = await _headers(session, "admin")
+    pid = await _project(anon_client, headers)
+    await anon_client.post(
+        _ips_url(pid),
+        params={"mode": "insert"},
+        json=[
+            {"ip": "1.1.1.1", "endtime": 100, "ports": [{"number": 80}]},
+            {"ip": "2.2.2.2", "endtime": 100, "ports": [{"number": 80}]},
+        ],
+        headers=headers,
+    )
+
+    assert (await anon_client.delete(_ips_url(pid), headers=headers)).status_code == 204
+    assert (await anon_client.get(_ips_url(pid), headers=headers)).json() == []
+
+
 async def test_import_over_size_limit_returns_413(
     anon_client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
