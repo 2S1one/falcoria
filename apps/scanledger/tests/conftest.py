@@ -18,14 +18,16 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-# `auth.models` is imported for its side effect: it registers UserDB on
-# SQLModel.metadata so `_build_schema`'s create_all() sees the table. Add each
-# new package's models module here as it lands (projects, ips, history).
+# The `models` modules (`auth.models`, `projects.models`, ...) are imported for
+# their side effect: registering their tables on SQLModel.metadata so
+# `_build_schema`'s create_all() sees them. Add each new package's models module
+# to this file as it lands (ips, history).
 from falcoria_scanledger.auth import models  # noqa: F401
 from falcoria_scanledger.auth.dependencies import require_admin
 from falcoria_scanledger.auth.models import UserDB
 from falcoria_scanledger.database import get_session
 from falcoria_scanledger.main import create_app
+from falcoria_scanledger.projects import models as projects_models  # noqa: F401
 
 _MAINTENANCE_DB = "scanledger"
 _TEST_DB = "scanledger_test"

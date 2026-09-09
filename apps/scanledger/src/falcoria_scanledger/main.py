@@ -6,13 +6,14 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 from sqlmodel import SQLModel
 
-from falcoria_scanledger.auth.dependencies import require_admin
+from falcoria_scanledger.auth.dependencies import require_admin, require_user
 from falcoria_scanledger.auth.router import router as auth_router
 from falcoria_scanledger.auth.service import ensure_primary_users
 from falcoria_scanledger.config import get_app_settings
-from falcoria_scanledger.constants import Tag
+from falcoria_scanledger.constants import AUTH_RESPONSES, Tag
 from falcoria_scanledger.database import dispose_engine, get_engine, get_sessionmaker
 from falcoria_scanledger.exceptions import register_exception_handlers
+from falcoria_scanledger.projects.router import router as projects_router
 
 
 @asynccontextmanager
@@ -44,6 +45,13 @@ def create_app() -> FastAPI:
         auth_router,
         prefix=settings.api_prefix,
         dependencies=[Depends(require_admin)],
+        responses=AUTH_RESPONSES,
+    )
+    app.include_router(
+        projects_router,
+        prefix=settings.api_prefix,
+        dependencies=[Depends(require_user)],
+        responses=AUTH_RESPONSES,
     )
 
     @app.get("/health", tags=[Tag.META])
