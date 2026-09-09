@@ -5,6 +5,7 @@ from ipaddress import ip_address
 
 from pydantic import BaseModel, Field, field_validator
 
+from falcoria_contracts.enums import PortChangeType, PortProtocol
 from falcoria_contracts.port import Port
 
 _PORT_MIN, _PORT_MAX = 0, 65535
@@ -55,3 +56,19 @@ class IPIn(BaseModel):
     @classmethod
     def _normalise_ranges(cls, v: list[tuple[int, int]]) -> list[tuple[int, int]]:
         return merge_port_ranges(v)
+
+
+class PortChange(BaseModel):
+    """One recorded change on one port — becomes an ip_port_history row.
+
+    ``observed_state`` and ``reason`` carry the raw scanner detail and are set
+    only when the change is a close (``STATE`` / ``new_value == "closed"``).
+    """
+
+    number: int
+    protocol: PortProtocol
+    change_type: PortChangeType
+    old_value: str | None = None
+    new_value: str | None = None
+    observed_state: str | None = None
+    reason: str | None = None
