@@ -4,7 +4,7 @@ Mounted by ``main.py`` under ``/projects/{project_id}/ips``, behind
 ``validate_project_access``.
 """
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 from uuid import UUID
 from xml.etree.ElementTree import ParseError
 
@@ -18,7 +18,13 @@ from falcoria_scanledger.constants import Tag
 from falcoria_scanledger.database import get_session
 from falcoria_scanledger.exceptions import BadRequest, NotFound, RequestEntityTooLarge
 from falcoria_scanledger.ips import service
-from falcoria_scanledger.ips.schemas import IPDeleteRequest, IPImportResult, IPIn, IPOut
+from falcoria_scanledger.ips.schemas import (
+    IPDeleteRequest,
+    IPImportResult,
+    IPIn,
+    IPOut,
+    ScannerFormat,
+)
 
 router = APIRouter(tags=[Tag.IPS])
 
@@ -64,7 +70,7 @@ async def import_scan(
     mode: _Mode,
     report: Annotated[UploadFile, File(description="Scan report file (nmap XML).")],
     track_history: _TrackHistory = True,
-    scanner: Annotated[Literal["nmap"], Query(description="Report format.")] = "nmap",
+    scanner: Annotated[ScannerFormat, Query(description="Report format.")] = ScannerFormat.NMAP,
 ) -> IPImportResult:
     """Imports a scan report file, merging it into the project under `mode`."""
     data = await _read_capped(report, get_app_settings().max_report_bytes)
@@ -73,7 +79,7 @@ async def import_scan(
             session, project_id, data, mode, track_history=track_history
         )
     except (ParseError, ValidationError) as exc:
-        raise BadRequest(f"Could not parse the {scanner} report: {exc}") from exc
+        raise BadRequest(f"Could not parse the {scanner.value} report: {exc}") from exc
     return IPImportResult.from_changesets(changesets)
 
 
