@@ -1,10 +1,15 @@
-"""Import-pipeline transaction boundary: collect -> dedup -> reconcile -> apply."""
+"""IP inventory reads plus the import transaction boundary.
 
+Import path: collect -> dedup -> reconcile -> apply. Reads project IPs with
+their ports and hostnames eager-loaded.
+"""
+
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
-from sqlmodel import col, select
+from sqlmodel import col, delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from falcoria_contracts.enums import ImportMode
@@ -14,7 +19,13 @@ from falcoria_scanledger.ips.dedup import dedup_batch
 from falcoria_scanledger.ips.models import IPDB, ObservedHostnameDB, PortDB
 from falcoria_scanledger.ips.modes import apply_mode
 from falcoria_scanledger.ips.nmap import parse_report
-from falcoria_scanledger.ips.schemas import ChangeSet, IPIn, StoredIP
+from falcoria_scanledger.ips.schemas import ChangeSet, IPIn, IPOut, StoredIP
+
+
+def _loaders() -> tuple[Any, ...]:
+    # SQLModel types a Relationship attribute as its value, so pyright rejects it
+    # as a loader argument; the runtime call is correct.
+    return (selectinload(IPDB.ports), selectinload(IPDB.hostnames))  # pyright: ignore[reportArgumentType]
 
 
 async def import_scan(
@@ -79,14 +90,11 @@ async def apply_import(
 
 
 async def _load(session: AsyncSession, project_id: UUID, addrs: list[str]) -> dict[str, IPDB]:
-    # SQLModel types a Relationship attribute as its value, so pyright rejects it
-    # as a loader argument; the runtime call is correct.
-    loaders = (selectinload(IPDB.ports), selectinload(IPDB.hostnames))  # pyright: ignore[reportArgumentType]
     rows = (
         await session.exec(
             select(IPDB)
             .where(IPDB.project_id == project_id, col(IPDB.ip).in_(addrs))
-            .options(*loaders)
+            .options(*_loaders())
         )
     ).all()
     return {r.ip: r for r in rows}
@@ -191,3 +199,68 @@ async def _write_history(
     if rows:
         connection = await session.connection()
         await connection.execute(pg_insert(IPPortHistoryDB).values(rows).on_conflict_do_nothing())
+
+
+async def list_ips(
+    session: AsyncSession,
+    project_id: UUID,
+    *,
+    skip: int | None = None,
+    limit: int | None = None,
+) -> list[IPOut]:
+    """Return the project's IPs, ordered by address, with ports and hostnames."""
+    rows = (
+        await session.exec(
+            select(IPDB)
+            .where(IPDB.project_id == project_id)
+            .order_by(col(IPDB.ip))
+            .options(*_loaders())
+            .offset(skip)
+            .limit(limit)
+        )
+    ).all()
+    return [_to_out(r) for r in rows]
+
+
+async def get_ip(session: AsyncSession, project_id: UUID, ip: str) -> IPOut | None:
+    """Return one IP with its ports and hostnames, or None when it is absent."""
+    row = (
+        await session.exec(
+            select(IPDB).where(IPDB.project_id == project_id, IPDB.ip == ip).options(*_loaders())
+        )
+    ).first()
+    return _to_out(row) if row is not None else None
+
+
+async def delete_ips(
+    session: AsyncSession, project_id: UUID, addresses: list[str] | None = None
+) -> int:
+    """Delete the project's IPs (all, or the listed ones); return the row count.
+
+    Ports and hostname links go through the database's ``ON DELETE CASCADE``.
+    ``observed_hostnames`` rows are left in place — harmless, and reused on the
+    next import.
+    """
+    # col(): sqlmodel's delete() types .where() strictly, without select()'s
+    # bool-comparison shim.
+    statement = delete(IPDB).where(col(IPDB.project_id) == project_id)
+    if addresses is not None:
+        statement = statement.where(col(IPDB.ip).in_(addresses))
+    connection = await session.connection()
+    result = await connection.execute(statement)
+    return result.rowcount
+
+
+def _to_out(ipdb: IPDB) -> IPOut:
+    return IPOut(
+        ip=ipdb.ip,
+        status=ipdb.status,
+        os=ipdb.os,
+        first_seen=ipdb.first_seen,
+        last_seen=ipdb.last_seen,
+        hostnames=sorted(h.hostname for h in ipdb.hostnames),
+        ports=sorted(
+            (Port.model_validate(p, from_attributes=True) for p in ipdb.ports),
+            key=lambda p: p.number,
+        ),
+    )

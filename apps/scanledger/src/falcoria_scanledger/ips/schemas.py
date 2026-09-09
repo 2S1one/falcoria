@@ -102,3 +102,41 @@ class ChangeSet(BaseModel):
     port_changes: list[PortChange] = Field(default_factory=list)
     hostnames: list[str] = Field(default_factory=list)
     new_hostnames: list[str] = Field(default_factory=list)
+
+
+class IPOut(BaseModel):
+    """One stored IP with its open ports and observed hostnames."""
+
+    ip: str
+    status: str | None = None
+    os: str | None = None
+    first_seen: int
+    last_seen: int
+    hostnames: list[str] = Field(default_factory=list)
+    ports: list[Port] = Field(default_factory=list)
+
+
+class IPImportResult(BaseModel):
+    """Summary of an import: which addresses were created versus updated."""
+
+    created: list[str] = Field(default_factory=list)
+    updated: list[str] = Field(default_factory=list)
+
+    @classmethod
+    def from_changesets(cls, changesets: list[ChangeSet]) -> "IPImportResult":
+        """Partition change sets by whether their IP was newly created."""
+        return cls(
+            created=[cs.ip for cs in changesets if cs.created],
+            updated=[cs.ip for cs in changesets if not cs.created],
+        )
+
+
+class IPDeleteRequest(BaseModel):
+    """The addresses to delete from a project."""
+
+    ip_addresses: list[str]
+
+    @field_validator("ip_addresses")
+    @classmethod
+    def _normalise(cls, v: list[str]) -> list[str]:
+        return [str(ip_address(a)) for a in v]
