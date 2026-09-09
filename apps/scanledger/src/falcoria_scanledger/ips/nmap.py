@@ -11,7 +11,7 @@ from typing import Self
 from xml.etree.ElementTree import Element
 
 from defusedxml.ElementTree import fromstring
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from falcoria_contracts.enums import PortProtocol, PortState, ServiceMethod
 from falcoria_contracts.port import Port
@@ -20,7 +20,13 @@ from falcoria_scanledger.ips.schemas import IPIn, merge_port_ranges
 _ADDR_TYPES = {"ipv4", "ipv6"}
 
 
-class NmapService(BaseModel):
+class _NmapModel(BaseModel):
+    # extra="forbid": a mistyped key in a from_element() dict raises instead of
+    # silently falling back to the field default.
+    model_config = ConfigDict(extra="forbid")
+
+
+class NmapService(_NmapModel):
     """An nmap ``<service>`` element; field names mirror nmap's attributes."""
 
     name: str | None = None
@@ -55,7 +61,7 @@ class NmapService(BaseModel):
         )
 
 
-class NmapPort(BaseModel):
+class NmapPort(_NmapModel):
     """An nmap ``<port>`` element together with its ``<state>``."""
 
     number: int = Field(ge=0, le=65535)
@@ -79,7 +85,7 @@ class NmapPort(BaseModel):
         )
 
 
-class NmapHost(BaseModel):
+class NmapHost(_NmapModel):
     """The parts of an nmap ``<host>`` that carry inventory data."""
 
     ip: str
@@ -127,7 +133,7 @@ class NmapHost(BaseModel):
         )
 
 
-class NmapReport(BaseModel):
+class NmapReport(_NmapModel):
     """A parsed nmap run: coverage ranges, finish time, and hosts."""
 
     scanned_ports: list[tuple[int, int]] = Field(default_factory=list)
