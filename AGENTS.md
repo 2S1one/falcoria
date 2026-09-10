@@ -63,6 +63,11 @@ enforce:
   gate green — fix the cause. A suppression is allowed only when genuinely unavoidable, and
   only with a specific rule code plus a one-line reason.
 - Model transformations via `model_dump()` / `model_validate()` — don't hand-list fields.
+  `TargetModel(**source.model_dump(), field=override)` is the base pattern (pydantic v2
+  drops unknown keys, so `include=` is never needed and is banned — it re-introduces a
+  hidden hardcode). `model_dump(exclude={"x"})` only when a name means different things in
+  source and target; `model_dump(mode="json")` when enums must serialise to `str` for the
+  DB layer. An explicit field is acceptable only when the names differ (`number` → `port`).
 
 ### Docstrings
 
@@ -87,6 +92,11 @@ private names, `tests/` and `migrations/` are exempt. What the tool cannot check
   The error contract goes in `responses=` / `status_code`, never a `Raises:` block. Do not
   also pass `description=` (it overrides the docstring).
 - **Custom exception classes:** one line stating *when* it is raised.
+- **Scanner-neutral:** prose in docstrings, comments and `Field(description=...)` says
+  "the scan" / "the scanner reported", never "nmap" — other scanners (masscan, …) are
+  planned. Field *names* may still mirror the scanner-flavoured contract (`servicefp`).
+- **No cross-references:** never point a docstring at another doc or spec file
+  ("see …", "per the … spec"). State the rule inline in a few words, or leave it out.
 - **Never:** restate the name; repeat an annotated type; open with "This function …" /
   "A helper that …"; put change history, TODO or author tags in a docstring.
 
