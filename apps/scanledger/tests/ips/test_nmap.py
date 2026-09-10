@@ -1,4 +1,4 @@
-"""Parser coverage for ips/nmap.py against real and generated nmap XML."""
+"""Parse and export coverage for ips/nmap.py against real and generated nmap XML."""
 
 from pathlib import Path
 from xml.etree.ElementTree import ParseError
@@ -8,8 +8,9 @@ from defusedxml.ElementTree import fromstring
 from pydantic import ValidationError
 
 from falcoria_contracts.enums import PortProtocol, PortState, ServiceMethod
-from falcoria_scanledger.ips.nmap import NmapPort, parse_report
-from falcoria_scanledger.ips.schemas import IPIn, merge_port_ranges
+from falcoria_contracts.port import Port
+from falcoria_scanledger.ips.nmap import NmapPort, _script_text, export_report, parse_report
+from falcoria_scanledger.ips.schemas import IPIn, IPOut, merge_port_ranges
 
 _FIXTURES = Path(__file__).parent.parent / "fixtures" / "nmap"
 
@@ -140,3 +141,96 @@ def test_nmap_port_from_element_coerces_and_validates() -> None:
         NmapPort.from_element(
             fromstring('<port portid="not-a-number"><state state="open"/></port>')
         )
+
+
+def _ipout(**kw: object) -> IPOut:
+    base: dict[str, object] = {
+        "ip": "203.0.113.10",
+        "status": "up",
+        "os": None,
+        "first_seen": 1000,
+        "last_seen": 2000,
+        "hostnames": [],
+        "ports": [],
+    }
+    base.update(kw)
+    return IPOut.model_validate(base)
+
+
+def test_empty_report_is_well_formed_and_parses_to_nothing() -> None:
+    xml = export_report([])
+    assert xml.startswith('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE nmaprun>\n')
+    assert "<nmaprun" in xml
+    assert parse_report(xml) == []
+
+
+def test_started_sets_run_timestamps_and_comment() -> None:
+    xml = export_report([], started=1_700_000_000)
+    assert 'start="1700000000"' in xml
+    assert '<finished time="1700000000"' in xml
+    assert "scan initiated" in xml
+
+
+def test_full_host_round_trips_through_parse_report() -> None:
+    port = Port(
+        number=443,
+        protocol=PortProtocol.TCP,
+        reason="syn-ack",
+        service="https",
+        product="nginx",
+        version="1.25.3",
+        extrainfo="Ubuntu",
+        tunnel="ssl",
+        servicefp="fp-data",
+        service_method=ServiceMethod.PROBED,
+        service_confidence=10,
+        cpe=["cpe:/a:nginx:nginx:1.25.3"],
+        scripts={"http-title": "Welcome"},
+    )
+    bare = Port(number=22)
+    ipout = _ipout(os="Linux 5.x", hostnames=["a.example.com", "b.example.com"], ports=[bare, port])
+
+    parsed = parse_report(export_report([ipout]))
+
+    assert len(parsed) == 1
+    ipin = parsed[0]
+    assert ipin.ip == ipout.ip
+    assert ipin.status == ipout.status
+    assert ipin.os == ipout.os
+    assert ipin.endtime == ipout.last_seen
+    assert ipin.hostnames == ipout.hostnames
+    assert ipin.scanned_ports == []  # no <scaninfo> emitted -> coverage unknown
+    assert ipin.ports == ipout.ports
+
+
+def test_absent_optional_fields_round_trip_as_none_not_empty_string() -> None:
+    ipin = parse_report(export_report([_ipout(ports=[Port(number=80)])]))[0]
+
+    port = ipin.ports[0]
+    assert port.service is None
+    assert port.product is None
+    assert port.reason is None
+    assert port.cpe == []
+    assert port.scripts == {}
+    assert ipin.os is None
+    assert ipin.hostnames == []
+
+
+def test_service_element_emitted_when_only_scripts_present() -> None:
+    xml = export_report([_ipout(ports=[Port(number=9999, scripts={"banner": "x"})])])
+
+    assert "<service" in xml
+    assert parse_report(xml)[0].ports[0].scripts == {"banner": "x"}
+
+
+def test_state_reason_attribute_is_omitted_when_unset() -> None:
+    with_reason = export_report([_ipout(ports=[Port(number=1, reason="syn-ack")])])
+    without = export_report([_ipout(ports=[Port(number=1)])])
+
+    assert 'reason="syn-ack"' in with_reason
+    assert "reason=" not in without
+
+
+def test_script_text_serialises_non_string_output() -> None:
+    assert _script_text("plain") == "plain"
+    assert _script_text({"b": 2, "a": 1}) == '{"a": 1, "b": 2}'

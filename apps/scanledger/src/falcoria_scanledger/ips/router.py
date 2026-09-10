@@ -8,7 +8,7 @@ from typing import Annotated, Any
 from uuid import UUID
 from xml.etree.ElementTree import ParseError
 
-from fastapi import APIRouter, Body, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Query, Response, UploadFile, status
 from pydantic import ValidationError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -26,6 +26,8 @@ from falcoria_scanledger.ips.schemas import (
     ScannerFormat,
 )
 from falcoria_scanledger.ips.search import SEARCH_EXAMPLES, IPSearchRequest, IPSearchResult
+from falcoria_scanledger.projects.dependencies import validate_project_access
+from falcoria_scanledger.projects.models import ProjectDB
 
 router = APIRouter(tags=[Tag.IPS])
 
@@ -41,6 +43,7 @@ _ScanId = Annotated[
     UUID | None,
     Query(description="Scan campaign this import belongs to; omit for a manual upload."),
 ]
+_Project = Annotated[ProjectDB, Depends(validate_project_access)]
 
 
 async def _read_capped(upload: UploadFile, limit: int) -> bytes:
@@ -133,6 +136,17 @@ async def list_ips(
 ) -> list[IPOut]:
     """Lists the project's IPs with their open ports and hostnames."""
     return await service.list_ips(session, project_id, skip=skip, limit=limit)
+
+
+@router.get("/download", response_class=Response)
+async def download_report(project_id: UUID, session: _Session, project: _Project) -> Response:
+    """Downloads the project's open-port inventory as an nmap-format XML report."""
+    xml = await service.download_report(session, project_id)
+    return Response(
+        content=xml,
+        media_type="text/xml",
+        headers={"Content-Disposition": f'attachment; filename="{project.name}.xml"'},
+    )
 
 
 @router.get("/{ip}", responses=_NOT_FOUND)

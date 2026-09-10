@@ -6,16 +6,18 @@ field to the relevant model. ``parse_report`` is the entry point; a host is
 projected onto the scanner-neutral ``IPIn`` by ``NmapHost.to_ipin``.
 """
 
+import json
+import time
 from ipaddress import ip_address
 from typing import Self
-from xml.etree.ElementTree import Element
+from xml.etree.ElementTree import Element, SubElement, indent, tostring
 
 from defusedxml.ElementTree import fromstring
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from falcoria_contracts.enums import PortProtocol, PortState, ServiceMethod
 from falcoria_contracts.port import Port
-from falcoria_scanledger.ips.schemas import IPIn, merge_port_ranges
+from falcoria_scanledger.ips.schemas import IPIn, IPOut, merge_port_ranges
 
 _ADDR_TYPES = {"ipv4", "ipv6"}
 
@@ -231,3 +233,99 @@ def _to_port(port: NmapPort) -> Port:
             "service_confidence": svc.conf if svc else None,
         }
     )
+
+
+_EXPORT_NMAP_VERSION = "7.94"
+_EXPORT_XMLOUTPUTVERSION = "1.05"
+_EXPORT_ARGS = "scanledger export"
+
+
+def export_report(ips: list[IPOut], *, started: int | None = None) -> str:
+    """Renders stored IPs as an nmap-format XML report string.
+
+    Round-trips through ``parse_report`` except ``first_seen``, which has no
+    place in the format and collapses to ``last_seen`` on re-import. Empty
+    ``ips`` still yields a well-formed empty report. ``started`` (unix seconds,
+    default now) sets the run timestamps and the initiation comment.
+    """
+    now = int(time.time()) if started is None else started
+    root = Element(
+        "nmaprun",
+        {
+            "scanner": "nmap",
+            "args": _EXPORT_ARGS,
+            "start": str(now),
+            "version": _EXPORT_NMAP_VERSION,
+            "xmloutputversion": _EXPORT_XMLOUTPUTVERSION,
+        },
+    )
+    SubElement(root, "verbose", {"level": "0"})
+    SubElement(root, "debugging", {"level": "0"})
+    for ip in ips:
+        _append_host(root, ip)
+    SubElement(SubElement(root, "runstats"), "finished", {"time": str(now)})
+
+    indent(root)
+    body = tostring(root, encoding="unicode")
+    when = time.strftime("%a %b %d %H:%M:%S %Y", time.gmtime(now))
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        "<!DOCTYPE nmaprun>\n"
+        '<?xml-stylesheet href="file:///usr/bin/../share/nmap/nmap.xsl" type="text/xsl"?>\n'
+        f"<!-- Nmap {_EXPORT_NMAP_VERSION} scan initiated {when} as: {_EXPORT_ARGS} -->\n"
+        f"{body}\n"
+    )
+
+
+def _append_host(root: Element, ip: IPOut) -> None:
+    host = SubElement(root, "host", {"endtime": str(ip.last_seen)})
+    SubElement(host, "status", {"state": ip.status or "up"})
+    SubElement(host, "address", {"addr": ip.ip, "addrtype": "ipv6" if ":" in ip.ip else "ipv4"})
+    if ip.hostnames:
+        names = SubElement(host, "hostnames")
+        for name in ip.hostnames:
+            SubElement(names, "hostname", {"name": name, "type": "user"})
+    if ip.os:
+        SubElement(SubElement(host, "os"), "osmatch", {"name": ip.os})
+    if ip.ports:
+        ports = SubElement(host, "ports")
+        for port in ip.ports:
+            _append_port(ports, port)
+
+
+def _append_port(ports: Element, port: Port) -> None:
+    port_el = SubElement(
+        ports, "port", {"protocol": port.protocol.value, "portid": str(port.number)}
+    )
+    state_attrs = {"state": port.state.value}
+    if port.reason is not None:
+        state_attrs["reason"] = port.reason
+    SubElement(port_el, "state", state_attrs)
+    _append_service(port_el, port)
+
+
+def _append_service(port_el: Element, port: Port) -> None:
+    attrs = {
+        "name": port.service,
+        "product": port.product,
+        "version": port.version,
+        "extrainfo": port.extrainfo,
+        "tunnel": port.tunnel,
+        "servicefp": port.servicefp,
+        "method": port.service_method.value if port.service_method else None,
+        "conf": str(port.service_confidence) if port.service_confidence is not None else None,
+    }
+    set_attrs = {k: v for k, v in attrs.items() if v is not None}
+    if not set_attrs and not port.cpe and not port.scripts:
+        return
+    service = SubElement(port_el, "service", set_attrs)
+    for cpe in port.cpe:
+        SubElement(service, "cpe").text = cpe
+    for script_id, output in port.scripts.items():
+        SubElement(service, "script", {"id": script_id, "output": _script_text(output)})
+
+
+def _script_text(output: object) -> str:
+    if isinstance(output, str):
+        return output
+    return json.dumps(output, default=str, sort_keys=True)

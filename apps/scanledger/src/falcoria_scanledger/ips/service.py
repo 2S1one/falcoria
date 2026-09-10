@@ -19,7 +19,7 @@ from falcoria_scanledger.history.models import IPPortHistoryDB
 from falcoria_scanledger.ips.dedup import dedup_batch
 from falcoria_scanledger.ips.models import IPDB, ObservedHostnameDB, PortDB
 from falcoria_scanledger.ips.modes import apply_mode
-from falcoria_scanledger.ips.nmap import parse_report
+from falcoria_scanledger.ips.nmap import export_report, parse_report
 from falcoria_scanledger.ips.schemas import ChangeSet, IPIn, IPOut, StoredIP
 from falcoria_scanledger.ips.search import (
     IPSearchRequest,
@@ -244,6 +244,19 @@ async def get_ip(session: AsyncSession, project_id: UUID, ip: str) -> IPOut | No
         )
     ).first()
     return _to_out(row) if row is not None else None
+
+
+async def download_report(session: AsyncSession, project_id: UUID) -> str:
+    """Return the project's IPs, ordered by address, as an nmap XML report."""
+    rows = (
+        await session.exec(
+            select(IPDB)
+            .where(IPDB.project_id == project_id)
+            .order_by(cast(col(IPDB.ip), INET), col(IPDB.id))
+            .options(*_loaders())
+        )
+    ).all()
+    return export_report([_to_out(r) for r in rows])
 
 
 async def delete_ips(

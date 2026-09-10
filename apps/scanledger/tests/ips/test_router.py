@@ -8,6 +8,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from falcoria_scanledger.auth import service as auth_service
 from falcoria_scanledger.auth.schemas import UserCreate
+from falcoria_scanledger.ips.nmap import parse_report
 
 pytestmark = pytest.mark.anyio
 
@@ -179,6 +180,40 @@ async def test_import_over_size_limit_returns_413(
         headers=headers,
     )
     assert resp.status_code == 413
+
+
+async def test_download_returns_nmap_xml_attachment(
+    anon_client: AsyncClient, session: AsyncSession
+) -> None:
+    headers = await _headers(session, "admin")
+    pid = await _project(anon_client, headers, name="acme")
+    await anon_client.post(
+        _ips_url(pid),
+        params={"mode": "insert"},
+        json=[{"ip": "1.2.3.4", "endtime": 100, "ports": [{"number": 80, "service": "http"}]}],
+        headers=headers,
+    )
+
+    resp = await anon_client.get(_ips_url(pid, "/download"), headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/xml")
+    assert resp.headers["content-disposition"] == 'attachment; filename="acme.xml"'
+    parsed = parse_report(resp.text)
+    assert [ip.ip for ip in parsed] == ["1.2.3.4"]
+    assert parsed[0].ports[0].service == "http"
+
+
+async def test_download_empty_project_is_a_valid_report(
+    anon_client: AsyncClient, session: AsyncSession
+) -> None:
+    headers = await _headers(session, "admin")
+    pid = await _project(anon_client, headers)
+
+    resp = await anon_client.get(_ips_url(pid, "/download"), headers=headers)
+
+    assert resp.status_code == 200
+    assert parse_report(resp.text) == []
 
 
 async def test_non_member_is_forbidden(anon_client: AsyncClient, session: AsyncSession) -> None:
