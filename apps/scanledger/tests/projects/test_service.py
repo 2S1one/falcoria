@@ -1,7 +1,6 @@
 import uuid
 
 import pytest
-from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -32,12 +31,14 @@ async def test_create_project_enrols_owner_as_member(session: AsyncSession) -> N
     assert await service.is_member(session, project.id, owner.id) is True
 
 
-async def test_create_project_rejects_duplicate_name(session: AsyncSession) -> None:
+async def test_create_project_allows_duplicate_names(session: AsyncSession) -> None:
     owner = await _user(session, "owner")
-    await service.create_project(session, ProjectCreate(name="dup"), owner)
+    first = await service.create_project(session, ProjectCreate(name="dup"), owner)
+    second = await service.create_project(session, ProjectCreate(name="dup"), owner)
 
-    with pytest.raises(IntegrityError):
-        await service.create_project(session, ProjectCreate(name="dup"), owner)
+    assert first.id != second.id
+    rows = await service.list_projects(session, owner)
+    assert [p.name for p in rows] == ["dup", "dup"]
 
 
 async def test_get_project_returns_none_for_unknown_id(session: AsyncSession) -> None:
@@ -80,6 +81,25 @@ async def test_update_project_distinguishes_unset_from_explicit_null(
 
     await service.update_project(session, project, ProjectUpdate(comment=None))
     assert project.comment is None
+
+
+async def test_update_project_changes_name(session: AsyncSession) -> None:
+    owner = await _user(session, "owner")
+    project = await service.create_project(session, ProjectCreate(name="before"), owner)
+
+    await service.update_project(session, project, ProjectUpdate(name="after"))
+
+    assert project.name == "after"
+
+
+async def test_update_project_ignores_explicit_null_name(session: AsyncSession) -> None:
+    owner = await _user(session, "owner")
+    project = await service.create_project(session, ProjectCreate(name="keep"), owner)
+
+    await service.update_project(session, project, ProjectUpdate(name=None, comment="c"))
+
+    assert project.name == "keep"
+    assert project.comment == "c"
 
 
 async def test_delete_project_cascades_membership(session: AsyncSession) -> None:

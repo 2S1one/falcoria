@@ -16,8 +16,9 @@ class ProjectCreate(BaseModel):
 
 
 class ProjectUpdate(BaseModel):
-    """Mutable project fields; `name` cannot be changed after creation."""
+    """Project fields to change; every field is optional and only set ones apply."""
 
+    name: str | None = Field(default=None, min_length=1, max_length=30, pattern=_NAME_PATTERN)
     comment: str | None = Field(default=None, max_length=_COMMENT_MAX_LENGTH)
 
 

@@ -43,15 +43,17 @@ async def test_create_project_returns_201_and_minimal_shape(
     assert set(body) == {"id", "name", "comment"}
 
 
-async def test_create_duplicate_name_returns_409(
+async def test_create_duplicate_name_is_allowed(
     anon_client: AsyncClient, session: AsyncSession
 ) -> None:
     _, headers = await _actor(session, "alice")
-    await anon_client.post(_BASE, json={"name": "dup"}, headers=headers)
+    first = await anon_client.post(_BASE, json={"name": "dup"}, headers=headers)
 
-    resp = await anon_client.post(_BASE, json={"name": "dup"}, headers=headers)
+    second = await anon_client.post(_BASE, json={"name": "dup"}, headers=headers)
 
-    assert resp.status_code == 409
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["id"] != second.json()["id"]
 
 
 async def test_create_invalid_name_returns_422(
@@ -151,6 +153,29 @@ async def test_update_comment(anon_client: AsyncClient, session: AsyncSession) -
 
     assert resp.status_code == 200
     assert resp.json()["comment"] == "hi"
+
+
+async def test_rename_project(anon_client: AsyncClient, session: AsyncSession) -> None:
+    _, headers = await _actor(session, "alice")
+    created = await anon_client.post(_BASE, json={"name": "old"}, headers=headers)
+    pid = created.json()["id"]
+
+    resp = await anon_client.put(f"{_BASE}/{pid}", json={"name": "new"}, headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "new"
+
+
+async def test_rename_invalid_name_returns_422(
+    anon_client: AsyncClient, session: AsyncSession
+) -> None:
+    _, headers = await _actor(session, "alice")
+    created = await anon_client.post(_BASE, json={"name": "old"}, headers=headers)
+    pid = created.json()["id"]
+
+    resp = await anon_client.put(f"{_BASE}/{pid}", json={"name": "bad name!"}, headers=headers)
+
+    assert resp.status_code == 422
 
 
 async def test_delete_project(anon_client: AsyncClient, session: AsyncSession) -> None:

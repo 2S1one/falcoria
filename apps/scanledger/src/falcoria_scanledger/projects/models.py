@@ -9,15 +9,17 @@ from sqlmodel import Field, SQLModel
 class ProjectDB(SQLModel, table=True):
     """A project: the container that scopes IP inventory and scan history.
 
-    `name` is unique and set once at creation; `comment` is the only mutable
-    field.
+    The id is the only identity; `name` is a free label with no uniqueness
+    constraint, and both `name` and `comment` are editable after creation.
     """
 
     # SQLAlchemy types __tablename__ as declared_attr; a plain str is correct here.
     __tablename__ = "projects"  # pyright: ignore[reportAssignmentType]
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    name: str = Field(unique=True)
+    # Indexed, not unique: two projects may share a name; the index backs the
+    # ORDER BY name in list_projects.
+    name: str = Field(index=True)
     comment: str | None = None
 
 

@@ -44,14 +44,12 @@ async def list_projects(session: AsyncSession, user: UserDB) -> Sequence[Project
 async def create_project(session: AsyncSession, data: ProjectCreate, owner: UserDB) -> ProjectDB:
     """Creates a project and enrols `owner` as its first member.
 
-    The request transaction commits. A duplicate name surfaces as
-    ``sqlalchemy.exc.IntegrityError``.
+    The request transaction commits. One `flush()` writes both rows so an
+    integrity error surfaces here rather than at the request commit.
     """
     project = ProjectDB(**data.model_dump())
     session.add(project)
     session.add(ProjectMemberLink(project_id=project.id, user_id=owner.id))
-    # One flush for both inserts, inside the router's try/except: a duplicate
-    # name raises IntegrityError here, not later at the request's commit.
     await session.flush()
     return project
 
@@ -61,9 +59,14 @@ async def update_project(
 ) -> ProjectDB:
     """Applies the set fields of `data` to an already-loaded `project`.
 
-    Only fields present in the request are touched (``exclude_unset``).
+    Only fields present in the request are touched (``exclude_unset``). An
+    explicit ``"name": null`` is ignored rather than a reset — the column is
+    NOT NULL.
     """
-    for field, value in data.model_dump(exclude_unset=True).items():
+    changes = data.model_dump(exclude_unset=True)
+    if changes.get("name") is None:
+        changes.pop("name", None)
+    for field, value in changes.items():
         setattr(project, field, value)
     return project
 

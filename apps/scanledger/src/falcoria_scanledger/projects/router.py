@@ -4,14 +4,13 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
-from sqlalchemy.exc import IntegrityError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from falcoria_scanledger.auth.dependencies import require_user
 from falcoria_scanledger.auth.models import UserDB
 from falcoria_scanledger.constants import Tag
 from falcoria_scanledger.database import get_session
-from falcoria_scanledger.exceptions import Conflict, NotFound
+from falcoria_scanledger.exceptions import NotFound
 from falcoria_scanledger.projects import members, service
 from falcoria_scanledger.projects.dependencies import validate_project_access
 from falcoria_scanledger.projects.models import ProjectDB
@@ -40,21 +39,14 @@ async def list_projects(
     return [ProjectOut.model_validate(row) for row in rows]
 
 
-@router.post(
-    "",
-    status_code=status.HTTP_201_CREATED,
-    responses={status.HTTP_409_CONFLICT: {"description": "Project name already taken."}},
-)
+@router.post("", status_code=status.HTTP_201_CREATED)
 async def create_project(
     body: ProjectCreate,
     session: Annotated[AsyncSession, Depends(get_session)],
     user: Annotated[UserDB, Depends(require_user)],
 ) -> ProjectOut:
-    """Creates a project; the caller becomes its first member."""
-    try:
-        project = await service.create_project(session, body, user)
-    except IntegrityError as exc:
-        raise Conflict(f"Project '{body.name}' already exists.") from exc
+    """Creates a project; the caller becomes its first member. Names may repeat."""
+    project = await service.create_project(session, body, user)
     return ProjectOut.model_validate(project)
 
 
@@ -72,7 +64,7 @@ async def update_project(
     session: Annotated[AsyncSession, Depends(get_session)],
     project: Annotated[ProjectDB, Depends(validate_project_access)],
 ) -> ProjectOut:
-    """Updates a project's comment. The name cannot be changed."""
+    """Updates a project's name and/or comment."""
     updated = await service.update_project(session, project, body)
     return ProjectOut.model_validate(updated)
 
