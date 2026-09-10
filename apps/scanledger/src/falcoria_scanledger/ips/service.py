@@ -7,7 +7,8 @@ their ports and hostnames eager-loaded.
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import ColumnElement, cast, func
+from sqlalchemy.dialects.postgresql import INET, insert as pg_insert
 from sqlalchemy.orm import selectinload
 from sqlmodel import col, delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -20,6 +21,12 @@ from falcoria_scanledger.ips.models import IPDB, ObservedHostnameDB, PortDB
 from falcoria_scanledger.ips.modes import apply_mode
 from falcoria_scanledger.ips.nmap import parse_report
 from falcoria_scanledger.ips.schemas import ChangeSet, IPIn, IPOut, StoredIP
+from falcoria_scanledger.ips.search import (
+    IPSearchRequest,
+    IPSearchResult,
+    build_search_conditions,
+    matched_port_filter,
+)
 
 
 def _loaders() -> tuple[Any, ...]:
@@ -258,16 +265,65 @@ async def delete_ips(
     return result.rowcount
 
 
-def _to_out(ipdb: IPDB) -> IPOut:
+async def search_ips(
+    session: AsyncSession, project_id: UUID, request: IPSearchRequest
+) -> IPSearchResult:
+    """Return the project IPs matching `request.filter`, paginated, with a total.
+
+    Two-stage: page the IP rows (hostnames eager-loaded), then load their ports
+    in one query — narrowed to the matching ports when `matched_ports_only`.
+    """
+    conditions = build_search_conditions(project_id, request.filter)
+
+    total = (await session.exec(select(func.count()).select_from(IPDB).where(*conditions))).one()
+
+    rows = (
+        await session.exec(
+            select(IPDB)
+            .where(*conditions)
+            .order_by(cast(col(IPDB.ip), INET), col(IPDB.id))
+            .offset(request.skip)
+            .limit(request.limit)
+            .options(selectinload(IPDB.hostnames))  # pyright: ignore[reportArgumentType]
+        )
+    ).all()
+
+    port_filter = matched_port_filter(request.filter) if request.matched_ports_only else None
+    ports_by_ip = await _load_ports(session, [r.id for r in rows if r.id is not None], port_filter)
+
+    items = [_ip_out(r, r.hostnames, ports_by_ip.get(r.id, [])) for r in rows if r.id is not None]
+    return IPSearchResult(items=items, total=total)
+
+
+async def _load_ports(
+    session: AsyncSession, ip_ids: list[int], port_filter: ColumnElement[bool] | None
+) -> dict[int, list[PortDB]]:
+    """Group open ports by ip_id for `ip_ids`, optionally narrowed by `port_filter`."""
+    if not ip_ids:
+        return {}
+    statement = select(PortDB).where(col(PortDB.ip_id).in_(ip_ids))
+    if port_filter is not None:
+        statement = statement.where(port_filter)
+    grouped: dict[int, list[PortDB]] = {}
+    for port in (await session.exec(statement)).all():
+        grouped.setdefault(port.ip_id, []).append(port)
+    return grouped
+
+
+def _ip_out(ipdb: IPDB, hostnames: list[ObservedHostnameDB], ports: list[PortDB]) -> IPOut:
     return IPOut(
         ip=ipdb.ip,
         status=ipdb.status,
         os=ipdb.os,
         first_seen=ipdb.first_seen,
         last_seen=ipdb.last_seen,
-        hostnames=sorted(h.hostname for h in ipdb.hostnames),
+        hostnames=sorted(h.hostname for h in hostnames),
         ports=sorted(
-            (Port.model_validate(p, from_attributes=True) for p in ipdb.ports),
+            (Port.model_validate(p, from_attributes=True) for p in ports),
             key=lambda p: p.number,
         ),
     )
+
+
+def _to_out(ipdb: IPDB) -> IPOut:
+    return _ip_out(ipdb, ipdb.hostnames, ipdb.ports)

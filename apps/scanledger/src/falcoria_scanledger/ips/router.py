@@ -8,7 +8,7 @@ from typing import Annotated, Any
 from uuid import UUID
 from xml.etree.ElementTree import ParseError
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Query, UploadFile, status
 from pydantic import ValidationError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -25,6 +25,7 @@ from falcoria_scanledger.ips.schemas import (
     IPOut,
     ScannerFormat,
 )
+from falcoria_scanledger.ips.search import SEARCH_EXAMPLES, IPSearchRequest, IPSearchResult
 
 router = APIRouter(tags=[Tag.IPS])
 
@@ -102,6 +103,25 @@ async def create_ips(
         session, project_id, body, mode, track_history=track_history, scan_id=scan_id
     )
     return IPImportResult.from_changesets(changesets)
+
+
+@router.post("/search", summary="Search IPs")
+async def search_ips(
+    project_id: UUID,
+    session: _Session,
+    body: Annotated[IPSearchRequest, Body(openapi_examples=SEARCH_EXAMPLES)],
+) -> IPSearchResult:
+    """Search the project's IPs by host and port attributes.
+
+    The body is a host-level filter (its set fields AND-ed) plus port-scoped
+    groups: ``all_of`` (a port matching every clause), ``any_of`` (a port
+    matching at least one), ``none_of`` (no port matching any). Within a clause,
+    every condition must hold on the same port row. ``matched_ports_only`` trims
+    each result's ports to those matching the ``all_of`` / ``any_of`` clauses.
+    Results are ordered by IP address; ``total`` is the match count before
+    ``skip`` / ``limit``.
+    """
+    return await service.search_ips(session, project_id, body)
 
 
 @router.get("")
