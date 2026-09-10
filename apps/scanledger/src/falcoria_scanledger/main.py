@@ -4,14 +4,13 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
-from sqlmodel import SQLModel
 
 from falcoria_scanledger.auth.dependencies import require_admin, require_user
 from falcoria_scanledger.auth.router import router as auth_router
 from falcoria_scanledger.auth.service import ensure_primary_users
 from falcoria_scanledger.config import get_app_settings
 from falcoria_scanledger.constants import AUTH_RESPONSES, Tag
-from falcoria_scanledger.database import dispose_engine, get_engine, get_sessionmaker
+from falcoria_scanledger.database import dispose_engine, get_sessionmaker
 from falcoria_scanledger.exceptions import register_exception_handlers
 from falcoria_scanledger.history.router import router as history_router
 from falcoria_scanledger.ips.router import router as ips_router
@@ -21,12 +20,12 @@ from falcoria_scanledger.projects.router import router as projects_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    """Bootstraps the schema, seeds the service accounts, disposes the engine on exit."""
+    """Seeds the service accounts on startup, disposes the engine on exit.
+
+    The schema is owned by Alembic — run ``alembic upgrade head`` before starting
+    the process; the app never issues DDL.
+    """
     settings = get_app_settings()
-    # TEMPORARY: Alembic owns the schema from build step 6 — drop this create_all then.
-    # Not safe for concurrent cold starts (create_all races); single process until then.
-    async with get_engine().begin() as connection:
-        await connection.run_sync(SQLModel.metadata.create_all)
     async with get_sessionmaker()() as session:
         await ensure_primary_users(
             session,
