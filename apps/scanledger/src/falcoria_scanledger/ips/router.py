@@ -18,6 +18,7 @@ from falcoria_scanledger.constants import Tag
 from falcoria_scanledger.database import get_session
 from falcoria_scanledger.exceptions import BadRequest, NotFound, RequestEntityTooLarge
 from falcoria_scanledger.ips import service
+from falcoria_scanledger.ips.facets import FACET_EXAMPLES, FacetsRequest, FacetsResult
 from falcoria_scanledger.ips.schemas import (
     IPDeleteRequest,
     IPImportResult,
@@ -125,6 +126,22 @@ async def search_ips(
     ``skip`` / ``limit``.
     """
     return await service.search_ips(session, project_id, body)
+
+
+@router.post("/facets", summary="IP facets")
+async def get_facets(
+    project_id: UUID,
+    session: _Session,
+    body: Annotated[FacetsRequest, Body(openapi_examples=FACET_EXAMPLES)],
+) -> FacetsResult:
+    """Value counts per dimension over the project's IPs matching the filter.
+
+    The filter has the same shape as POST /ips/search. Each facet lists its top
+    `limit` values by descending host count; `service`, `product`, `version`,
+    `tunnel` and `os` include a null bucket. An empty body facets the whole
+    project.
+    """
+    return await service.get_facets(session, project_id, body)
 
 
 @router.get("")

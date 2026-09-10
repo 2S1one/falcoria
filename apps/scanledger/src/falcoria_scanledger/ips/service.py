@@ -7,7 +7,7 @@ their ports and hostnames eager-loaded.
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, cast, func
+from sqlalchemy import ColumnElement, cast, func, nulls_last
 from sqlalchemy.dialects.postgresql import INET, insert as pg_insert
 from sqlalchemy.orm import selectinload
 from sqlmodel import col, delete, select
@@ -17,6 +17,12 @@ from falcoria_contracts.enums import ImportMode
 from falcoria_contracts.port import Port
 from falcoria_scanledger.history.models import IPPortHistoryDB
 from falcoria_scanledger.ips.dedup import dedup_batch
+from falcoria_scanledger.ips.facets import (
+    FACET_COLUMNS,
+    FacetsRequest,
+    FacetsResult,
+    FacetValue,
+)
 from falcoria_scanledger.ips.models import IPDB, ObservedHostnameDB, PortDB
 from falcoria_scanledger.ips.modes import apply_mode
 from falcoria_scanledger.ips.nmap import export_report, parse_report
@@ -340,3 +346,32 @@ def _ip_out(ipdb: IPDB, hostnames: list[ObservedHostnameDB], ports: list[PortDB]
 
 def _to_out(ipdb: IPDB) -> IPOut:
     return _ip_out(ipdb, ipdb.hostnames, ipdb.ports)
+
+
+def _facet_value(value: object, count: int) -> FacetValue:
+    return FacetValue(value=None if value is None else str(value), count=count)
+
+
+async def get_facets(
+    session: AsyncSession, project_id: UUID, request: FacetsRequest
+) -> FacetsResult:
+    """Return per-dimension host counts for the IPs matching `request.filter`.
+
+    One grouped count per facet, run sequentially on the single request session,
+    each restricted to the matched IP ids and capped at `request.limit` values.
+    """
+    matched_ips = select(col(IPDB.id)).where(*build_search_conditions(project_id, request.filter))
+    facets: dict[str, list[FacetValue]] = {}
+    for name, (value_col, key_col) in FACET_COLUMNS.items():
+        total = func.count(func.distinct(key_col))
+        rows = (
+            await session.exec(
+                select(value_col, total)
+                .where(key_col.in_(matched_ips))
+                .group_by(value_col)
+                .order_by(total.desc(), nulls_last(value_col))
+                .limit(request.limit)
+            )
+        ).all()
+        facets[name] = [_facet_value(v, n) for v, n in rows]
+    return FacetsResult.model_validate(facets)
