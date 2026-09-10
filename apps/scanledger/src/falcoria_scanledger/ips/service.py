@@ -35,10 +35,11 @@ async def import_scan(
     mode: ImportMode,
     *,
     track_history: bool = True,
+    scan_id: UUID | None = None,
 ) -> list[ChangeSet]:
     """Parse an nmap XML report and merge it into the project under `mode`."""
     return await apply_import(
-        session, project_id, parse_report(xml), mode, track_history=track_history
+        session, project_id, parse_report(xml), mode, track_history=track_history, scan_id=scan_id
     )
 
 
@@ -49,9 +50,12 @@ async def create_ips(
     mode: ImportMode,
     *,
     track_history: bool = True,
+    scan_id: UUID | None = None,
 ) -> list[ChangeSet]:
     """Merge a structured list of IPIn entries into the project under `mode`."""
-    return await apply_import(session, project_id, entries, mode, track_history=track_history)
+    return await apply_import(
+        session, project_id, entries, mode, track_history=track_history, scan_id=scan_id
+    )
 
 
 async def apply_import(
@@ -61,12 +65,14 @@ async def apply_import(
     mode: ImportMode,
     *,
     track_history: bool,
+    scan_id: UUID | None = None,
 ) -> list[ChangeSet]:
     """Reconcile `entries` against stored state and stage every change on `session`.
 
     Duplicate addresses in the batch are collapsed first. The session is
     flushed, not committed — the request's unit of work owns the commit.
-    Returns one ChangeSet per resulting IP.
+    Returns one ChangeSet per resulting IP. `scan_id`, if given, is stamped on
+    every history row this import writes.
     """
     entries = dedup_batch(entries)
     if not entries:
@@ -83,7 +89,7 @@ async def apply_import(
         else:
             _update(existing, cs, hostnames)
     if track_history:
-        await _write_history(session, project_id, changesets)
+        await _write_history(session, project_id, changesets, scan_id)
 
     await session.flush()
     return changesets
@@ -183,7 +189,7 @@ def _update(ipdb: IPDB, cs: ChangeSet, hostnames: dict[str, ObservedHostnameDB])
 
 
 async def _write_history(
-    session: AsyncSession, project_id: UUID, changesets: list[ChangeSet]
+    session: AsyncSession, project_id: UUID, changesets: list[ChangeSet], scan_id: UUID | None
 ) -> None:
     rows = [
         {
@@ -192,6 +198,7 @@ async def _write_history(
             "project_id": project_id,
             "ip": cs.ip,
             "created_at": cs.endtime,
+            "scan_id": scan_id,
         }
         for cs in changesets
         for change in cs.port_changes

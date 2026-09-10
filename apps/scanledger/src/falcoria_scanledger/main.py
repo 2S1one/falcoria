@@ -13,6 +13,7 @@ from falcoria_scanledger.config import get_app_settings
 from falcoria_scanledger.constants import AUTH_RESPONSES, Tag
 from falcoria_scanledger.database import dispose_engine, get_engine, get_sessionmaker
 from falcoria_scanledger.exceptions import register_exception_handlers
+from falcoria_scanledger.history.router import router as history_router
 from falcoria_scanledger.ips.router import router as ips_router
 from falcoria_scanledger.projects.dependencies import validate_project_access
 from falcoria_scanledger.projects.router import router as projects_router
@@ -60,6 +61,12 @@ def create_app() -> FastAPI:
     app.include_router(
         ips_router,
         prefix=f"{settings.api_prefix}/projects/{{project_id}}/ips",
+        dependencies=[Depends(validate_project_access)],
+        responses=AUTH_RESPONSES,
+    )
+    app.include_router(
+        history_router,
+        prefix=f"{settings.api_prefix}/projects/{{project_id}}/history",
         dependencies=[Depends(validate_project_access)],
         responses=AUTH_RESPONSES,
     )

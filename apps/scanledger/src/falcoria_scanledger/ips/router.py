@@ -36,6 +36,10 @@ _CHUNK_BYTES = 64 * 1024
 _Session = Annotated[AsyncSession, Depends(get_session)]
 _Mode = Annotated[ImportMode, Query(description="How the import merges with stored state.")]
 _TrackHistory = Annotated[bool, Query(description="Write port-change history rows.")]
+_ScanId = Annotated[
+    UUID | None,
+    Query(description="Scan campaign this import belongs to; omit for a manual upload."),
+]
 
 
 async def _read_capped(upload: UploadFile, limit: int) -> bytes:
@@ -70,13 +74,14 @@ async def import_scan(
     mode: _Mode,
     report: Annotated[UploadFile, File(description="Scan report file (nmap XML).")],
     track_history: _TrackHistory = True,
+    scan_id: _ScanId = None,
     scanner: Annotated[ScannerFormat, Query(description="Report format.")] = ScannerFormat.NMAP,
 ) -> IPImportResult:
     """Imports a scan report file, merging it into the project under `mode`."""
     data = await _read_capped(report, get_app_settings().max_report_bytes)
     try:
         changesets = await service.import_scan(
-            session, project_id, data, mode, track_history=track_history
+            session, project_id, data, mode, track_history=track_history, scan_id=scan_id
         )
     except (ParseError, ValidationError) as exc:
         raise BadRequest(f"Could not parse the {scanner.value} report: {exc}") from exc
@@ -90,10 +95,11 @@ async def create_ips(
     mode: _Mode,
     body: list[IPIn],
     track_history: _TrackHistory = True,
+    scan_id: _ScanId = None,
 ) -> IPImportResult:
     """Merges a structured list of IP entries into the project under `mode`."""
     changesets = await service.create_ips(
-        session, project_id, body, mode, track_history=track_history
+        session, project_id, body, mode, track_history=track_history, scan_id=scan_id
     )
     return IPImportResult.from_changesets(changesets)
 
