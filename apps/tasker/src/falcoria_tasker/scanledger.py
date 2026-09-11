@@ -36,7 +36,7 @@ class ScanledgerClient:
         introspection surface to keep in sync. `project_id=None` checks only that
         the token is valid, for a route with no project scope.
         """
-        path = f"/api/projects/{project_id}" if project_id is not None else "/api/projects"
+        path = f"/projects/{project_id}" if project_id is not None else "/projects"
         response = await self._client.get(path, headers={"Authorization": f"Bearer {token}"})
         if response.status_code == httpx.codes.OK:
             return AccessResult.OK

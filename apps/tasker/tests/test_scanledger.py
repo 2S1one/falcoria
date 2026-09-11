@@ -14,7 +14,7 @@ async def test_check_access_ok_without_project() -> None:
         assert request.headers["authorization"] == "Bearer tok"
         return httpx.Response(200, json=[])
 
-    client = ScanledgerClient("http://scanledger.test", transport=httpx.MockTransport(handler))
+    client = ScanledgerClient("http://scanledger.test/api", transport=httpx.MockTransport(handler))
     assert await client.check_access("tok") is AccessResult.OK
 
 
@@ -25,7 +25,7 @@ async def test_check_access_ok_with_project() -> None:
         assert request.url.path == f"/api/projects/{project_id}"
         return httpx.Response(200, json={})
 
-    client = ScanledgerClient("http://scanledger.test", transport=httpx.MockTransport(handler))
+    client = ScanledgerClient("http://scanledger.test/api", transport=httpx.MockTransport(handler))
     assert await client.check_access("tok", project_id) is AccessResult.OK
 
 
@@ -41,7 +41,7 @@ async def test_check_access_maps_error_statuses(status_code: int, expected: Acce
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(status_code)
 
-    client = ScanledgerClient("http://scanledger.test", transport=httpx.MockTransport(handler))
+    client = ScanledgerClient("http://scanledger.test/api", transport=httpx.MockTransport(handler))
     assert await client.check_access("tok") is expected
 
 
@@ -49,6 +49,6 @@ async def test_check_access_raises_on_unexpected_status() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500)
 
-    client = ScanledgerClient("http://scanledger.test", transport=httpx.MockTransport(handler))
+    client = ScanledgerClient("http://scanledger.test/api", transport=httpx.MockTransport(handler))
     with pytest.raises(httpx.HTTPStatusError):
         await client.check_access("tok")
