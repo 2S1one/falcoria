@@ -48,7 +48,7 @@ async def test_resolves_public_and_private_ips(monkeypatch: pytest.MonkeyPatch) 
         ["public.example.com", "private.example.com"], single_resolve=False, semaphore_limit=10
     )
 
-    assert result.public_ips == ["8.8.8.8"]
+    assert result.public_ips == {"8.8.8.8": ["public.example.com"]}
     assert result.private_ips == {"10.0.0.1": ["private.example.com"]}
     assert result.unresolvable == []
 
@@ -58,7 +58,7 @@ async def test_single_resolve_keeps_only_first_ip(monkeypatch: pytest.MonkeyPatc
 
     result = await resolve_targets(["multi.example.com"], single_resolve=True, semaphore_limit=10)
 
-    assert result.public_ips == ["8.8.8.8"]
+    assert result.public_ips == {"8.8.8.8": ["multi.example.com"]}
 
 
 async def test_retries_before_succeeding(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -72,7 +72,7 @@ async def test_retries_before_succeeding(monkeypatch: pytest.MonkeyPatch) -> Non
         retry_delay_seconds=0,
     )
 
-    assert result.public_ips == ["8.8.8.8"]
+    assert result.public_ips == {"8.8.8.8": ["flaky.example.com"]}
     assert result.unresolvable == []
 
 
@@ -88,7 +88,7 @@ async def test_marks_unresolvable_after_exhausting_retries(monkeypatch: pytest.M
     )
 
     assert result.unresolvable == ["dead.example.com"]
-    assert result.public_ips == []
+    assert result.public_ips == {}
     assert result.private_ips == {}
 
 
@@ -100,3 +100,13 @@ async def test_merges_sources_for_the_same_private_ip(monkeypatch: pytest.Monkey
     )
 
     assert sorted(result.private_ips["10.0.0.1"]) == ["a.example.com", "b.example.com"]
+
+
+async def test_merges_sources_for_the_same_public_ip(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_resolver(monkeypatch, {"a.example.com": [["8.8.8.8"]], "b.example.com": [["8.8.8.8"]]})
+
+    result = await resolve_targets(
+        ["a.example.com", "b.example.com"], single_resolve=False, semaphore_limit=10
+    )
+
+    assert sorted(result.public_ips["8.8.8.8"]) == ["a.example.com", "b.example.com"]

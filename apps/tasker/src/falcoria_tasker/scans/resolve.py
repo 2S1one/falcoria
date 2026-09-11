@@ -14,9 +14,15 @@ logger = logging.getLogger("falcoria_tasker")
 
 @dataclass(slots=True)
 class ResolvedHostnames:
-    """DNS resolution outcome for a batch of pending hostnames."""
+    """DNS resolution outcome for a batch of pending hostnames.
 
-    public_ips: list[str] = field(default_factory=list)
+    ``public_ips`` / ``private_ips`` map each resolved IP to the hostname(s)
+    that resolved to it, so a later step can still attribute an IP back to
+    its originating hostname (e.g. to record a new hostname on an IP it
+    otherwise decides not to scan).
+    """
+
+    public_ips: dict[str, list[str]] = field(default_factory=dict)
     private_ips: dict[str, list[str]] = field(default_factory=dict)
     unresolvable: list[str] = field(default_factory=list)
 
@@ -50,8 +56,8 @@ async def resolve_targets(
     result = ResolvedHostnames()
     semaphore = asyncio.Semaphore(semaphore_limit)
 
-    def add_private(ip: str, source: str) -> None:
-        sources = result.private_ips.setdefault(ip, [])
+    def add_ip(bucket: dict[str, list[str]], ip: str, source: str) -> None:
+        sources = bucket.setdefault(ip, [])
         if source not in sources:
             sources.append(source)
 
@@ -66,10 +72,8 @@ async def resolve_targets(
                     ips = []
                 if ips:
                     for ip in ips:
-                        if is_public_ip(ip):
-                            result.public_ips.append(ip)
-                        else:
-                            add_private(ip, hostname)
+                        bucket = result.public_ips if is_public_ip(ip) else result.private_ips
+                        add_ip(bucket, ip, hostname)
                     return
                 if attempt < retries - 1:
                     await asyncio.sleep(retry_delay_seconds)
