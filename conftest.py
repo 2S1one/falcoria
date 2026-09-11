@@ -2,11 +2,13 @@ import os
 
 import pytest
 
-# scanledger's AppSettings has required token fields; set deterministic dummies before
-# any test imports the app (this root conftest loads before the package one). Real env
-# vars still win via setdefault.
+# Both apps' AppSettings have required fields; set deterministic dummies before any
+# test imports either app (this root conftest loads before the package ones). Real
+# env vars still win via setdefault.
 os.environ.setdefault("SCANLEDGER_ADMIN_TOKEN", "test-admin-token")
 os.environ.setdefault("SCANLEDGER_TASKER_TOKEN", "test-tasker-token")
+os.environ.setdefault("TASKER_SCANLEDGER_BASE_URL", "http://scanledger.test/api")
+os.environ.setdefault("TASKER_SCANLEDGER_TOKEN", "test-tasker-token")
 
 
 @pytest.fixture(scope="session")
