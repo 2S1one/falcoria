@@ -3,7 +3,11 @@
 import asyncio
 from uuid import UUID
 
-from temporalio.client import WorkflowExecutionAsyncIterator
+from temporalio.client import (
+    WorkflowExecution,
+    WorkflowExecutionAsyncIterator,
+    WorkflowExecutionStatus,
+)
 
 from falcoria_contracts.enums import ImportMode
 from falcoria_contracts.scan_io import ScanBatchInput, ScanBatchResult, ScanTask
@@ -12,11 +16,15 @@ from falcoria_contracts.temporal_names import (
     QUERY_GET_PROGRESS,
     SCAN_BATCH_WORKFLOW_NAME,
 )
+from falcoria_tasker.constants import CANCEL_BATCH_SIZE
 from falcoria_tasker.temporal.client import get_temporal_client
 from falcoria_tasker.temporal.visibility import (
     batch_workflow_id,
+    batch_workflows_by_scan_query,
     build_batch_search_attrs,
     extract_ip_from_search_attrs,
+    extract_scan_id_from_search_attrs,
+    running_batch_by_scan_query,
     running_batch_query,
     running_scan_targets_query,
     running_scans_by_ips_query,
@@ -109,3 +117,85 @@ async def running_ips(project_id: UUID, scan_id: str) -> list[tuple[str, str]]:
         if worker:
             targets.append((ip, worker))
     return targets
+
+
+async def list_running_scan_ids(project_id: UUID) -> set[str]:
+    """Returns the distinct scan_ids of the project's currently running batch workflows."""
+    scan_ids: set[str] = set()
+    async for workflow in list_running_batches(project_id):
+        scan_id = extract_scan_id_from_search_attrs(workflow.typed_search_attributes)
+        if scan_id:
+            scan_ids.add(scan_id)
+    return scan_ids
+
+
+async def scan_progress(project_id: UUID, scan_id: str) -> ScanBatchResult | None:
+    """Aggregates total/completed/failed across every batch workflow of one scan.
+
+    A still-running batch is queried live; a closed one returns its stored
+    result directly - querying a closed workflow execution isn't guaranteed
+    servable. Returns None if no batch workflow was ever started for scan_id.
+    """
+    client = get_temporal_client()
+    executions = [
+        wf async for wf in client.list_workflows(batch_workflows_by_scan_query(project_id, scan_id))
+    ]
+    if not executions:
+        return None
+
+    async def _progress(execution: WorkflowExecution) -> ScanBatchResult:
+        if execution.status is WorkflowExecutionStatus.RUNNING:
+            return await query_progress(execution.id)
+        handle = client.get_workflow_handle(execution.id, result_type=ScanBatchResult)
+        return await handle.result()
+
+    results = await asyncio.gather(*(_progress(execution) for execution in executions))
+    return ScanBatchResult(
+        total=sum(r.total for r in results),
+        completed=sum(r.completed for r in results),
+        failed=sum(r.failed for r in results),
+    )
+
+
+async def cancel_running_batches(project_id: UUID, scan_id: str | None) -> list[str]:
+    """Signals cancel on every running batch workflow, optionally scoped to scan_id.
+
+    Returns the cancelled workflow ids.
+    """
+    client = get_temporal_client()
+    query = (
+        running_batch_query(project_id)
+        if scan_id is None
+        else running_batch_by_scan_query(project_id, scan_id)
+    )
+    workflow_ids = [wf.id async for wf in client.list_workflows(query)]
+    await asyncio.gather(*(client.get_workflow_handle(wid).cancel() for wid in workflow_ids))
+    return workflow_ids
+
+
+async def cancel_running_scans_by_ips(project_id: UUID, ips: list[str]) -> list[str]:
+    """Signals cancel on every running per-IP scan workflow matching any of ips.
+
+    Chunks the visibility query at CANCEL_BATCH_SIZE ips per call, since an
+    unbounded IN(...) clause doesn't scale. Returns the cancelled workflow ids.
+    """
+    client = get_temporal_client()
+    workflow_ids: list[str] = []
+    unique_ips = sorted(set(ips))
+    for i in range(0, len(unique_ips), CANCEL_BATCH_SIZE):
+        chunk = unique_ips[i : i + CANCEL_BATCH_SIZE]
+        chunk_ids = [
+            wf.id
+            async for wf in client.list_workflows(running_scans_by_ips_query(project_id, chunk))
+        ]
+        await asyncio.gather(*(client.get_workflow_handle(wid).cancel() for wid in chunk_ids))
+        workflow_ids.extend(chunk_ids)
+    return workflow_ids
+
+
+async def terminate_if_still_running(workflow_id: str) -> None:
+    """Terminates workflow_id only if it is still RUNNING; a no-op otherwise."""
+    handle = get_temporal_client().get_workflow_handle(workflow_id)
+    description = await handle.describe()
+    if description.status is WorkflowExecutionStatus.RUNNING:
+        await handle.terminate()

@@ -1,22 +1,30 @@
 """Scan-orchestration pipeline: dedup/resolve/shard targets, then start the workflows."""
 
 import asyncio
+import logging
 import random
 import time
 from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
+from temporalio.service import RPCError
+
 from falcoria_contracts.enums import ImportMode, ScannerFormat
 from falcoria_contracts.scan_io import ScanTask
 from falcoria_tasker.config import get_app_settings
-from falcoria_tasker.constants import SCAN_BATCH_CHUNK_SIZE
+from falcoria_tasker.constants import CANCEL_TERMINATE_WAIT, SCAN_BATCH_CHUNK_SIZE
 from falcoria_tasker.scanledger import ScanledgerClient, get_scanledger_client
 from falcoria_tasker.scans.resolve import resolve_targets
 from falcoria_tasker.scans.scanner_args import build_open_ports_args, build_service_args
 from falcoria_tasker.scans.schemas import (
+    CancelScanRequest,
+    CancelScanResponse,
     NotScannedDetails,
+    RunningTarget,
     RunScanRequest,
     RunScanResponse,
+    ScanListResponse,
+    ScanStatusResponse,
     ScanSummary,
     SkippedCounts,
 )
@@ -24,7 +32,14 @@ from falcoria_tasker.scans.sharding import shard_ports
 from falcoria_tasker.scans.targets import partition_targets, remove_duplicates
 from falcoria_tasker.temporal import workflows
 
+logger = logging.getLogger("falcoria_tasker")
+
 _SCANNER = ScannerFormat.NMAP  # the only scanner implemented so far
+
+# Tracked references to fire-and-forget terminate-after-grace-period tasks, so
+# they aren't garbage-collected mid-flight (a bare asyncio.create_task(...) with
+# no other reference is a known footgun).
+_background_tasks: set[asyncio.Task[None]] = set()
 
 
 @dataclass(slots=True)
@@ -226,3 +241,64 @@ async def run_scan(project_id: UUID, request: RunScanRequest) -> RunScanResponse
     return RunScanResponse(
         scan_id=scan_id, summary=summary, not_scanned=_build_not_scanned(prepared)
     )
+
+
+async def list_running_scans(project_id: UUID) -> ScanListResponse:
+    """Lists the project's currently running scans."""
+    scan_ids = await workflows.list_running_scan_ids(project_id)
+    return ScanListResponse(running=len(scan_ids), scan_ids=sorted(scan_ids))
+
+
+async def get_scan_status(project_id: UUID, scan_id: str) -> ScanStatusResponse | None:
+    """Returns scan_id's task-completion counts and running targets.
+
+    Returns None if no batch workflow was ever started for scan_id.
+    """
+    progress, targets = await asyncio.gather(
+        workflows.scan_progress(project_id, scan_id),
+        workflows.running_ips(project_id, scan_id),
+    )
+    if progress is None:
+        return None
+    return ScanStatusResponse(
+        total=progress.total,
+        completed=progress.completed,
+        failed=progress.failed,
+        running_targets=[RunningTarget(ip=ip, worker=worker) for ip, worker in targets],
+    )
+
+
+async def _terminate_after_grace_period(workflow_ids: list[str]) -> None:
+    """Force-terminates any of workflow_ids still running after the cancel grace period."""
+    await asyncio.sleep(CANCEL_TERMINATE_WAIT.total_seconds())
+    for workflow_id in workflow_ids:
+        try:
+            await workflows.terminate_if_still_running(workflow_id)
+        except RPCError:
+            logger.exception("Failed to terminate workflow %s after cancel.", workflow_id)
+
+
+def _schedule_terminate_if_running(workflow_ids: list[str]) -> None:
+    """Fires the terminate-after-grace-period task, keeping a reference alive."""
+    task = asyncio.create_task(_terminate_after_grace_period(workflow_ids))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
+async def cancel_scan(project_id: UUID, request: CancelScanRequest) -> CancelScanResponse:
+    """Signals a graceful cancel, then force-terminates anything still running after a grace period.
+
+    scan_id cancels that scan's batch workflows; ips cancels the matching
+    per-IP scan workflows directly (finer-grained than a whole batch); neither
+    cancels every running scan in the project.
+    """
+    if request.scan_id:
+        workflow_ids = await workflows.cancel_running_batches(project_id, request.scan_id)
+    elif request.ips:
+        workflow_ids = await workflows.cancel_running_scans_by_ips(project_id, request.ips)
+    else:
+        workflow_ids = await workflows.cancel_running_batches(project_id, None)
+
+    if workflow_ids:
+        _schedule_terminate_if_running(workflow_ids)
+    return CancelScanResponse()

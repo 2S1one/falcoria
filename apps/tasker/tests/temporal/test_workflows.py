@@ -44,12 +44,17 @@ from falcoria_tasker.temporal.client import connect_temporal, dispose_temporal
 from falcoria_tasker.temporal.visibility import batch_workflow_id
 from falcoria_tasker.temporal.workflows import (
     already_running_ips,
+    cancel_running_batches,
+    cancel_running_scans_by_ips,
     list_running_batches,
+    list_running_scan_ids,
     query_progress,
     running_ips,
+    scan_progress,
     signal_cancel,
     start_batch_workflows,
     terminate,
+    terminate_if_still_running,
 )
 
 pytestmark = pytest.mark.anyio
@@ -59,19 +64,29 @@ PROJECT_ID = UUID("22222222-2222-2222-2222-222222222222")
 
 @workflow.defn(name=SCAN_BATCH_WORKFLOW_NAME)
 class _StubScanBatchWorkflow:
-    """Stub carrying the real workflow name, query name, and search attributes."""
+    """Stub carrying the real workflow name, query name, and search attributes.
+
+    Runs until signalled `finish` - most tests never signal it, so it stays
+    running for the duration of the test (matching the real workflow's
+    long-running shape); a couple signal it to exercise the closed-workflow path.
+    """
 
     def __init__(self) -> None:
         self._result = ScanBatchResult(total=0, completed=0, failed=0)
+        self._finished = False
 
     @workflow.query(name=QUERY_GET_PROGRESS)
     def get_progress(self) -> ScanBatchResult:
         return self._result
 
+    @workflow.signal
+    def finish(self) -> None:
+        self._finished = True
+
     @workflow.run
     async def run(self, input: ScanBatchInput) -> ScanBatchResult:
         self._result = ScanBatchResult(total=len(input.tasks), completed=0, failed=0)
-        await workflow.wait_condition(lambda: False)
+        await workflow.wait_condition(lambda: self._finished)
         return self._result
 
 
@@ -314,3 +329,158 @@ async def test_running_ips_omits_targets_without_an_ip_attribute(real_temporal: 
         assert targets == []
     finally:
         await real_temporal.get_workflow_handle(workflow_id).terminate()
+
+
+@pytest.mark.temporal
+async def test_list_running_scan_ids_returns_distinct_ids(real_temporal: Client) -> None:
+    scan_id_a, scan_id_b = str(uuid4()), str(uuid4())
+    await start_batch_workflows(
+        PROJECT_ID, scan_id_a, _one_task(), ImportMode.INSERT, chunk_size=10
+    )
+    await start_batch_workflows(
+        PROJECT_ID, scan_id_b, _one_task(), ImportMode.INSERT, chunk_size=10
+    )
+    try:
+        await asyncio.sleep(0.5)
+
+        scan_ids = await list_running_scan_ids(PROJECT_ID)
+
+        assert {scan_id_a, scan_id_b} <= scan_ids
+    finally:
+        await terminate(batch_workflow_id(PROJECT_ID, scan_id_a, 0))
+        await terminate(batch_workflow_id(PROJECT_ID, scan_id_b, 0))
+
+
+@pytest.mark.temporal
+async def test_scan_progress_returns_none_for_an_unknown_scan(real_temporal: Client) -> None:
+    assert await scan_progress(PROJECT_ID, str(uuid4())) is None
+
+
+@pytest.mark.temporal
+async def test_scan_progress_aggregates_running_batches(real_temporal: Client) -> None:
+    scan_id = str(uuid4())
+    tasks = [
+        ScanTask(ip=f"10.0.0.{i}", open_ports_args="-p 80", timeout=30, mode=ImportMode.INSERT)
+        for i in range(3)
+    ]
+    await start_batch_workflows(PROJECT_ID, scan_id, tasks, ImportMode.INSERT, chunk_size=2)
+    try:
+        await asyncio.sleep(0.5)
+
+        progress = await scan_progress(PROJECT_ID, scan_id)
+
+        assert progress is not None
+        assert progress.total == 3
+        assert progress.completed == 0
+        assert progress.failed == 0
+    finally:
+        await terminate(batch_workflow_id(PROJECT_ID, scan_id, 0))
+        await terminate(batch_workflow_id(PROJECT_ID, scan_id, 1))
+
+
+@pytest.mark.temporal
+async def test_scan_progress_uses_stored_result_for_a_closed_workflow(
+    real_temporal: Client,
+) -> None:
+    scan_id = str(uuid4())
+    await start_batch_workflows(PROJECT_ID, scan_id, _one_task(), ImportMode.INSERT, chunk_size=10)
+    workflow_id = batch_workflow_id(PROJECT_ID, scan_id, 0)
+    handle = real_temporal.get_workflow_handle(workflow_id, result_type=ScanBatchResult)
+    await handle.signal("finish")
+    await handle.result()
+    await asyncio.sleep(0.5)
+
+    progress = await scan_progress(PROJECT_ID, scan_id)
+
+    assert progress is not None
+    assert progress.total == 1
+
+
+@pytest.mark.temporal
+async def test_cancel_running_batches_scoped_to_scan_id(real_temporal: Client) -> None:
+    scan_id = str(uuid4())
+    await start_batch_workflows(PROJECT_ID, scan_id, _one_task(), ImportMode.INSERT, chunk_size=10)
+    workflow_id = batch_workflow_id(PROJECT_ID, scan_id, 0)
+    await asyncio.sleep(0.5)
+
+    cancelled = await cancel_running_batches(PROJECT_ID, scan_id)
+
+    assert workflow_id in cancelled
+    handle = real_temporal.get_workflow_handle(workflow_id)
+    with pytest.raises(WorkflowFailureError):
+        await handle.result()
+    assert (await handle.describe()).status == WorkflowExecutionStatus.CANCELED
+
+
+@pytest.mark.temporal
+async def test_cancel_running_batches_project_wide(real_temporal: Client) -> None:
+    scan_id = str(uuid4())
+    await start_batch_workflows(PROJECT_ID, scan_id, _one_task(), ImportMode.INSERT, chunk_size=10)
+    workflow_id = batch_workflow_id(PROJECT_ID, scan_id, 0)
+    await asyncio.sleep(0.5)
+
+    cancelled = await cancel_running_batches(PROJECT_ID, None)
+
+    assert workflow_id in cancelled
+    handle = real_temporal.get_workflow_handle(workflow_id)
+    with pytest.raises(WorkflowFailureError):
+        await handle.result()
+
+
+@pytest.mark.temporal
+async def test_cancel_running_scans_by_ips(real_temporal: Client) -> None:
+    scan_id = str(uuid4())
+    ip = "10.0.0.50"
+    workflow_id = f"scan-workflow-{uuid4()}"
+    await real_temporal.start_workflow(
+        SCAN_WORKFLOW_NAME,
+        id=workflow_id,
+        task_queue=PORT_SCANNER_TASK_QUEUE,
+        search_attributes=TypedSearchAttributes(
+            [
+                SearchAttributePair(SA_PROJECT_ID, str(PROJECT_ID)),
+                SearchAttributePair(SA_SCAN_ID, scan_id),
+                SearchAttributePair(SA_IP, ip),
+            ]
+        ),
+    )
+    await asyncio.sleep(0.5)
+
+    cancelled = await cancel_running_scans_by_ips(PROJECT_ID, [ip, "10.0.0.51"])
+
+    assert cancelled == [workflow_id]
+    handle = real_temporal.get_workflow_handle(workflow_id)
+    with pytest.raises(WorkflowFailureError):
+        await handle.result()
+
+
+@pytest.mark.temporal
+async def test_terminate_if_still_running_terminates_a_running_workflow(
+    real_temporal: Client,
+) -> None:
+    scan_id = str(uuid4())
+    await start_batch_workflows(PROJECT_ID, scan_id, _one_task(), ImportMode.INSERT, chunk_size=10)
+    workflow_id = batch_workflow_id(PROJECT_ID, scan_id, 0)
+
+    await terminate_if_still_running(workflow_id)
+
+    handle = real_temporal.get_workflow_handle(workflow_id)
+    with pytest.raises(WorkflowFailureError):
+        await handle.result()
+    assert (await handle.describe()).status == WorkflowExecutionStatus.TERMINATED
+
+
+@pytest.mark.temporal
+async def test_terminate_if_still_running_is_a_noop_for_a_closed_workflow(
+    real_temporal: Client,
+) -> None:
+    scan_id = str(uuid4())
+    await start_batch_workflows(PROJECT_ID, scan_id, _one_task(), ImportMode.INSERT, chunk_size=10)
+    workflow_id = batch_workflow_id(PROJECT_ID, scan_id, 0)
+    handle = real_temporal.get_workflow_handle(workflow_id, result_type=ScanBatchResult)
+    await handle.signal("finish")
+    await handle.result()
+
+    await terminate_if_still_running(workflow_id)
+
+    assert (await handle.describe()).status == WorkflowExecutionStatus.COMPLETED

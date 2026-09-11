@@ -1,7 +1,9 @@
 """Tests for scans/service.py."""
 
+import asyncio
 import json
 from dataclasses import dataclass
+from datetime import timedelta
 from uuid import UUID
 
 import aiodns
@@ -9,11 +11,21 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
+import falcoria_tasker.scans.service as service_module
 from falcoria_contracts.enums import ImportMode
-from falcoria_contracts.scan_io import ScanTask
+from falcoria_contracts.scan_io import ScanBatchResult, ScanTask
 from falcoria_tasker.config import AppSettings
 from falcoria_tasker.scanledger import ScanledgerClient
-from falcoria_tasker.scans.schemas import OpenPortsOpts, RunScanRequest, ServiceOpts, ShardingConfig
+from falcoria_tasker.scans.schemas import (
+    CancelScanRequest,
+    OpenPortsOpts,
+    RunningTarget,
+    RunScanRequest,
+    ScanListResponse,
+    ScanStatusResponse,
+    ServiceOpts,
+    ShardingConfig,
+)
 from falcoria_tasker.scans.service import (
     InsertModeDedup,
     PreparedTargets,
@@ -22,6 +34,9 @@ from falcoria_tasker.scans.service import (
     _build_tasks,
     _merge_sources,
     _shard_count,
+    cancel_scan,
+    get_scan_status,
+    list_running_scans,
     run_scan,
 )
 from falcoria_tasker.temporal import workflows as workflows_module
@@ -359,3 +374,142 @@ async def test_run_scan_reports_private_and_unresolvable(monkeypatch: pytest.Mon
     assert response.not_scanned.unresolvable_hosts == ["dead.example.com"]
     assert response.summary.skipped.private_ip == 1
     assert response.summary.skipped.unresolvable == 1
+
+
+# --- list_running_scans / get_scan_status ---
+
+
+async def test_list_running_scans_wraps_and_sorts_scan_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_list_running_scan_ids(project_id: UUID) -> set[str]:
+        return {"b", "a"}
+
+    monkeypatch.setattr(workflows_module, "list_running_scan_ids", fake_list_running_scan_ids)
+
+    result = await list_running_scans(PROJECT_ID)
+
+    assert result == ScanListResponse(running=2, scan_ids=["a", "b"])
+
+
+async def test_get_scan_status_returns_none_for_an_unknown_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_scan_progress(project_id: UUID, scan_id: str) -> ScanBatchResult | None:
+        return None
+
+    async def fake_running_ips(project_id: UUID, scan_id: str) -> list[tuple[str, str]]:
+        return []
+
+    monkeypatch.setattr(workflows_module, "scan_progress", fake_scan_progress)
+    monkeypatch.setattr(workflows_module, "running_ips", fake_running_ips)
+
+    assert await get_scan_status(PROJECT_ID, "unknown") is None
+
+
+async def test_get_scan_status_combines_progress_and_running_targets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_scan_progress(project_id: UUID, scan_id: str) -> ScanBatchResult | None:
+        return ScanBatchResult(total=3, completed=1, failed=0)
+
+    async def fake_running_ips(project_id: UUID, scan_id: str) -> list[tuple[str, str]]:
+        return [("10.0.0.1", "worker-1")]
+
+    monkeypatch.setattr(workflows_module, "scan_progress", fake_scan_progress)
+    monkeypatch.setattr(workflows_module, "running_ips", fake_running_ips)
+
+    status = await get_scan_status(PROJECT_ID, "scan-1")
+
+    assert status == ScanStatusResponse(
+        total=3,
+        completed=1,
+        failed=0,
+        running_targets=[RunningTarget(ip="10.0.0.1", worker="worker-1")],
+    )
+
+
+# --- cancel_scan ---
+
+
+def _patch_grace_period(monkeypatch: pytest.MonkeyPatch, seconds: float = 0) -> None:
+    monkeypatch.setattr(
+        "falcoria_tasker.scans.service.CANCEL_TERMINATE_WAIT", timedelta(seconds=seconds)
+    )
+
+
+async def test_cancel_scan_by_scan_id_cancels_batches_then_terminates_after_grace_period(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[UUID, str | None]] = []
+    terminated: list[str] = []
+
+    async def fake_cancel_running_batches(project_id: UUID, scan_id: str | None) -> list[str]:
+        calls.append((project_id, scan_id))
+        return ["wf-1"]
+
+    async def fake_terminate_if_still_running(workflow_id: str) -> None:
+        terminated.append(workflow_id)
+
+    monkeypatch.setattr(workflows_module, "cancel_running_batches", fake_cancel_running_batches)
+    monkeypatch.setattr(
+        workflows_module, "terminate_if_still_running", fake_terminate_if_still_running
+    )
+    _patch_grace_period(monkeypatch)
+    before = len(service_module._background_tasks)
+
+    response = await cancel_scan(PROJECT_ID, CancelScanRequest(scan_id="scan-1"))
+
+    assert calls == [(PROJECT_ID, "scan-1")]
+    assert response.success is True
+    assert len(service_module._background_tasks) == before + 1
+    await asyncio.gather(*service_module._background_tasks)
+    assert terminated == ["wf-1"]
+
+
+async def test_cancel_scan_by_ips_cancels_matching_scan_workflows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[UUID, list[str]]] = []
+
+    async def fake_cancel_running_scans_by_ips(project_id: UUID, ips: list[str]) -> list[str]:
+        calls.append((project_id, ips))
+        return []
+
+    monkeypatch.setattr(
+        workflows_module, "cancel_running_scans_by_ips", fake_cancel_running_scans_by_ips
+    )
+
+    await cancel_scan(PROJECT_ID, CancelScanRequest(ips=["10.0.0.1"]))
+
+    assert calls == [(PROJECT_ID, ["10.0.0.1"])]
+
+
+async def test_cancel_scan_with_neither_cancels_every_running_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[UUID, str | None]] = []
+
+    async def fake_cancel_running_batches(project_id: UUID, scan_id: str | None) -> list[str]:
+        calls.append((project_id, scan_id))
+        return []
+
+    monkeypatch.setattr(workflows_module, "cancel_running_batches", fake_cancel_running_batches)
+
+    await cancel_scan(PROJECT_ID, CancelScanRequest())
+
+    assert calls == [(PROJECT_ID, None)]
+
+
+async def test_cancel_scan_schedules_no_background_task_when_nothing_was_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_cancel_running_batches(project_id: UUID, scan_id: str | None) -> list[str]:
+        return []
+
+    monkeypatch.setattr(workflows_module, "cancel_running_batches", fake_cancel_running_batches)
+    before = len(service_module._background_tasks)
+
+    await cancel_scan(PROJECT_ID, CancelScanRequest())
+
+    assert len(service_module._background_tasks) == before

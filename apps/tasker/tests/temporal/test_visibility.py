@@ -9,6 +9,8 @@ from falcoria_tasker.temporal.visibility import (
     batch_workflows_by_scan_query,
     build_batch_search_attrs,
     extract_ip_from_search_attrs,
+    extract_scan_id_from_search_attrs,
+    running_batch_by_scan_query,
     running_batch_query,
     running_scan_targets_query,
     running_scans_by_ips_query,
@@ -72,4 +74,21 @@ def test_running_scan_targets_query() -> None:
     query = running_scan_targets_query(PROJECT_ID, "scan-1")
 
     assert query.startswith(running_scans_query(PROJECT_ID))
+    assert 'ScanId = "scan-1"' in query
+
+
+def test_extract_scan_id_from_search_attrs_present() -> None:
+    attrs = TypedSearchAttributes([SearchAttributePair(SA_SCAN_ID, "scan-1")])
+
+    assert extract_scan_id_from_search_attrs(attrs) == "scan-1"
+
+
+def test_extract_scan_id_from_search_attrs_absent() -> None:
+    assert extract_scan_id_from_search_attrs(TypedSearchAttributes.empty) is None
+
+
+def test_running_batch_by_scan_query() -> None:
+    query = running_batch_by_scan_query(PROJECT_ID, "scan-1")
+
+    assert query.startswith(running_batch_query(PROJECT_ID))
     assert 'ScanId = "scan-1"' in query

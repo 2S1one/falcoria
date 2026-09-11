@@ -40,12 +40,22 @@ def extract_ip_from_search_attrs(search_attributes: TypedSearchAttributes) -> st
     return search_attributes.get(SA_IP)
 
 
+def extract_scan_id_from_search_attrs(search_attributes: TypedSearchAttributes) -> str | None:
+    """Returns the ScanId search attribute's value, or None if absent."""
+    return search_attributes.get(SA_SCAN_ID)
+
+
 def running_batch_query(project_id: UUID) -> str:
     """Builds a visibility query for a project's currently running ScanBatchWorkflows."""
     return (
         f'ExecutionStatus = "Running" AND ProjectId = "{project_id}" '
         f'AND WorkflowType = "{SCAN_BATCH_WORKFLOW_NAME}"'
     )
+
+
+def running_batch_by_scan_query(project_id: UUID, scan_id: str) -> str:
+    """Builds a visibility query for one scan's currently running ScanBatchWorkflows."""
+    return f'{running_batch_query(project_id)} AND ScanId = "{scan_id}"'
 
 
 def running_scans_query(project_id: UUID) -> str:

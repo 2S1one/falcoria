@@ -7,9 +7,12 @@ from httpx import ASGITransport, AsyncClient
 
 from falcoria_tasker.main import app
 from falcoria_tasker.scans.schemas import (
+    CancelScanResponse,
     NotScannedDetails,
     RunScanRequest,
     RunScanResponse,
+    ScanListResponse,
+    ScanStatusResponse,
     ScanSummary,
 )
 
@@ -58,3 +61,69 @@ async def test_run_scan_requires_a_bearer_token() -> None:
         response = await anon.post(f"/api/projects/{uuid4()}/scans", json=_BODY)
 
     assert response.status_code == 401
+
+
+async def test_list_running_scans_delegates_to_service(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_list_running_scans(project_id: UUID) -> ScanListResponse:
+        return ScanListResponse(running=1, scan_ids=["scan-1"])
+
+    monkeypatch.setattr(
+        "falcoria_tasker.scans.router.service.list_running_scans", fake_list_running_scans
+    )
+
+    response = await client.get(f"/api/projects/{uuid4()}/scans")
+
+    assert response.status_code == 200
+    assert response.json() == {"running": 1, "scan_ids": ["scan-1"]}
+
+
+async def test_get_scan_status_delegates_to_service(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_get_scan_status(project_id: UUID, scan_id: str) -> ScanStatusResponse:
+        return ScanStatusResponse(total=1, completed=0, failed=0)
+
+    monkeypatch.setattr(
+        "falcoria_tasker.scans.router.service.get_scan_status", fake_get_scan_status
+    )
+
+    response = await client.get(f"/api/projects/{uuid4()}/scans/scan-1")
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+
+
+async def test_get_scan_status_returns_404_for_unknown_scan(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_get_scan_status(project_id: UUID, scan_id: str) -> ScanStatusResponse | None:
+        return None
+
+    monkeypatch.setattr(
+        "falcoria_tasker.scans.router.service.get_scan_status", fake_get_scan_status
+    )
+
+    response = await client.get(f"/api/projects/{uuid4()}/scans/unknown")
+
+    assert response.status_code == 404
+
+
+async def test_cancel_scan_delegates_to_service(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[UUID, object]] = []
+
+    async def fake_cancel_scan(project_id: UUID, request: object) -> CancelScanResponse:
+        calls.append((project_id, request))
+        return CancelScanResponse()
+
+    monkeypatch.setattr("falcoria_tasker.scans.router.service.cancel_scan", fake_cancel_scan)
+    project_id = uuid4()
+
+    response = await client.post(f"/api/projects/{project_id}/scans/cancel", json={"scan_id": "s1"})
+
+    assert response.status_code == 200
+    assert response.json() == {"success": True}
+    assert calls[0][0] == project_id
