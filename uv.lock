@@ -310,11 +310,15 @@ name = "falcoria-temporal"
 version = "0.1.0"
 source = { editable = "packages/falcoria-temporal" }
 dependencies = [
+    { name = "falcoria-contracts" },
     { name = "temporalio", extra = ["pydantic"] },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "temporalio", extras = ["pydantic"] }]
+requires-dist = [
+    { name = "falcoria-contracts", editable = "packages/falcoria-contracts" },
+    { name = "temporalio", extras = ["pydantic"] },
+]
 
 [[package]]
 name = "fastapi"

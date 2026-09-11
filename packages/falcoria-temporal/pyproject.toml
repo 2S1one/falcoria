@@ -3,7 +3,7 @@ name = "falcoria-temporal"
 version = "0.1.0"
 description = "Shared Temporal SDK glue (pinned data converter, search-attribute keys) for tasker and worker."
 requires-python = ">=3.12"
-dependencies = ["temporalio[pydantic]"]
+dependencies = ["temporalio[pydantic]", "falcoria-contracts"]
 
 [build-system]
 requires = ["hatchling"]
