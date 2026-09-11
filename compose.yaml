@@ -74,6 +74,10 @@ services:
         tctl --address temporal:7233 --namespace default namespace describe >/dev/null 2>&1 || \
           tctl --address temporal:7233 --namespace default namespace register \
             --retention 24h --desc "Default namespace for Temporal Server (dev)."
+        # Custom search attributes tasker/worker set on scan workflows (idempotent:
+        # tctl exits 0 and no-ops if they already exist).
+        tctl --auto_confirm --address temporal:7233 admin cluster add-search-attributes \
+          -n ProjectId -t Keyword -n ScanId -t Keyword -n Mode -t Keyword -n Ip -t Keyword
 
   temporal-ui:
     image: temporalio/ui:2.34.0
