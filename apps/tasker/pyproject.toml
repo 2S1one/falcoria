@@ -1,0 +1,24 @@
+[project]
+name = "falcoria-tasker"
+version = "0.1.0"
+description = "Falcoria scan-orchestration API — starts and tracks scans on Temporal."
+requires-python = ">=3.12"
+dependencies = [
+    "falcoria-contracts",
+    "falcoria-temporal",
+    "fastapi",
+    "temporalio",
+    "httpx",
+    "aiodns",
+    "pydantic-settings",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/falcoria_tasker"]
+
+# falcoria-contracts / falcoria-temporal are resolved from the workspace via the
+# root pyproject.toml's [tool.uv.sources]; no per-member table needed.
