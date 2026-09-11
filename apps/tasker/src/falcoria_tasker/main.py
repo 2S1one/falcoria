@@ -9,6 +9,7 @@ from falcoria_tasker.config import Env, get_app_settings
 from falcoria_tasker.constants import Tag
 from falcoria_tasker.dns import dispose_dns_resolver, init_dns_resolver
 from falcoria_tasker.exceptions import register_exception_handlers
+from falcoria_tasker.scanledger import dispose_scanledger_client
 from falcoria_tasker.temporal.client import connect_temporal, dispose_temporal
 
 
@@ -20,6 +21,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     yield
     await dispose_dns_resolver()
     await dispose_temporal()
+    await dispose_scanledger_client()
 
 
 def create_app() -> FastAPI:
