@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI
 from falcoria_scanledger.auth.dependencies import require_admin, require_user
 from falcoria_scanledger.auth.router import router as auth_router
 from falcoria_scanledger.auth.service import ensure_primary_users
-from falcoria_scanledger.config import get_app_settings
+from falcoria_scanledger.config import Env, get_app_settings
 from falcoria_scanledger.constants import AUTH_RESPONSES, Tag
 from falcoria_scanledger.database import dispose_engine, get_sessionmaker
 from falcoria_scanledger.exceptions import register_exception_handlers
@@ -40,7 +40,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 def create_app() -> FastAPI:
     """Builds the scanledger FastAPI application."""
     settings = get_app_settings()
-    app = FastAPI(title="scanledger", debug=settings.debug, lifespan=lifespan)
+    hide_docs = settings.env is Env.PROD
+    app = FastAPI(
+        title="scanledger",
+        debug=settings.debug,
+        lifespan=lifespan,
+        docs_url=None if hide_docs else "/docs",
+        redoc_url=None if hide_docs else "/redoc",
+        openapi_url=None if hide_docs else "/openapi.json",
+    )
     register_exception_handlers(app)
 
     app.include_router(
