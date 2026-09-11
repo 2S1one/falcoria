@@ -35,6 +35,8 @@ class AppSettings(BaseAppSettings):
         scanledger_token: bearer token for tasker's service account on
             scanledger — must match scanledger's own ``SCANLEDGER_TASKER_TOKEN``.
             Env ``TASKER_SCANLEDGER_TOKEN``.
+        dns_resolve_semaphore_limit: max concurrent in-flight DNS lookups
+            during target resolution. Env ``TASKER_DNS_RESOLVE_SEMAPHORE_LIMIT``.
     """
 
     env: Env = Env.LOCAL
@@ -42,6 +44,7 @@ class AppSettings(BaseAppSettings):
     api_prefix: str = "/api"
     scanledger_base_url: str
     scanledger_token: SecretStr
+    dns_resolve_semaphore_limit: int = 100
 
 
 @lru_cache

@@ -19,6 +19,7 @@ from falcoria_tasker.temporal.visibility import (
     extract_ip_from_search_attrs,
     running_batch_query,
     running_scan_targets_query,
+    running_scans_by_ips_query,
 )
 
 
@@ -68,6 +69,23 @@ async def signal_cancel(workflow_id: str) -> None:
 async def terminate(workflow_id: str) -> None:
     """Forcibly terminates a workflow, regardless of its current state."""
     await get_temporal_client().get_workflow_handle(workflow_id).terminate()
+
+
+async def already_running_ips(project_id: UUID, ips: list[str]) -> set[str]:
+    """Returns the subset of ips currently scanned by any running scan in project_id.
+
+    Used before a scan_id exists yet, to dedupe INSERT-mode targets against
+    every scan already in flight for the project - not just one scan_id.
+    """
+    if not ips:
+        return set()
+    client = get_temporal_client()
+    running: set[str] = set()
+    async for workflow in client.list_workflows(running_scans_by_ips_query(project_id, ips)):
+        ip = extract_ip_from_search_attrs(workflow.typed_search_attributes)
+        if ip:
+            running.add(ip)
+    return running
 
 
 async def running_ips(project_id: UUID, scan_id: str) -> list[tuple[str, str]]:

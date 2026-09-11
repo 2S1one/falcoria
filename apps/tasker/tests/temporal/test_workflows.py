@@ -43,6 +43,7 @@ from falcoria_tasker.config import get_temporal_settings
 from falcoria_tasker.temporal.client import connect_temporal, dispose_temporal
 from falcoria_tasker.temporal.visibility import batch_workflow_id
 from falcoria_tasker.temporal.workflows import (
+    already_running_ips,
     list_running_batches,
     query_progress,
     running_ips,
@@ -172,6 +173,10 @@ async def test_signal_cancel_cancels_the_workflow(temporal: Client) -> None:
     assert description.status == WorkflowExecutionStatus.CANCELED
 
 
+async def test_already_running_ips_empty_input_no_ops(temporal: Client) -> None:
+    assert await already_running_ips(PROJECT_ID, []) == set()
+
+
 async def test_terminate_stops_the_workflow(temporal: Client) -> None:
     scan_id = str(uuid4())
     await start_batch_workflows(PROJECT_ID, scan_id, _one_task(), ImportMode.INSERT, chunk_size=10)
@@ -253,6 +258,35 @@ async def test_running_ips_reports_worker_identity(real_temporal: Client) -> Non
         reported_ip, worker = targets[0]
         assert reported_ip == ip
         assert worker
+    finally:
+        await real_temporal.get_workflow_handle(workflow_id).terminate()
+
+
+@pytest.mark.temporal
+async def test_already_running_ips_returns_only_the_matching_running_ones(
+    real_temporal: Client,
+) -> None:
+    scan_id = str(uuid4())
+    running_ip = "10.0.0.43"
+    workflow_id = f"scan-workflow-{uuid4()}"
+    await real_temporal.start_workflow(
+        SCAN_WORKFLOW_NAME,
+        id=workflow_id,
+        task_queue=PORT_SCANNER_TASK_QUEUE,
+        search_attributes=TypedSearchAttributes(
+            [
+                SearchAttributePair(SA_PROJECT_ID, str(PROJECT_ID)),
+                SearchAttributePair(SA_SCAN_ID, scan_id),
+                SearchAttributePair(SA_IP, running_ip),
+            ]
+        ),
+    )
+    try:
+        await asyncio.sleep(0.5)
+
+        result = await already_running_ips(PROJECT_ID, [running_ip, "10.0.0.44"])
+
+        assert result == {running_ip}
     finally:
         await real_temporal.get_workflow_handle(workflow_id).terminate()
 
