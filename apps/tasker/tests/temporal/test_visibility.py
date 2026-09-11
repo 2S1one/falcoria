@@ -10,6 +10,7 @@ from falcoria_tasker.temporal.visibility import (
     build_batch_search_attrs,
     extract_ip_from_search_attrs,
     running_batch_query,
+    running_scan_targets_query,
     running_scans_by_ips_query,
     running_scans_query,
 )
@@ -65,3 +66,10 @@ def test_extract_ip_from_search_attrs_present() -> None:
 
 def test_extract_ip_from_search_attrs_absent() -> None:
     assert extract_ip_from_search_attrs(TypedSearchAttributes.empty) is None
+
+
+def test_running_scan_targets_query() -> None:
+    query = running_scan_targets_query(PROJECT_ID, "scan-1")
+
+    assert query.startswith(running_scans_query(PROJECT_ID))
+    assert 'ScanId = "scan-1"' in query

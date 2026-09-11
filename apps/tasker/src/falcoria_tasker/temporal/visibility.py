@@ -60,3 +60,8 @@ def running_scans_by_ips_query(project_id: UUID, ips: list[str]) -> str:
     """Builds a visibility query for a project's running ScanWorkflows scanning any of ips."""
     ip_list = ", ".join(f'"{ip}"' for ip in ips)
     return f"{running_scans_query(project_id)} AND Ip IN ({ip_list})"
+
+
+def running_scan_targets_query(project_id: UUID, scan_id: str) -> str:
+    """Builds a visibility query for one scan's currently running ScanWorkflows."""
+    return f'{running_scans_query(project_id)} AND ScanId = "{scan_id}"'
