@@ -1,7 +1,6 @@
 """Parse and request DTOs for the IP import pipeline."""
 
 from collections.abc import Iterable
-from enum import Enum
 from ipaddress import ip_address
 
 from pydantic import BaseModel, Field, field_validator
@@ -10,12 +9,6 @@ from falcoria_contracts.enums import PortChangeType, PortProtocol
 from falcoria_contracts.port import Port
 
 _PORT_MIN, _PORT_MAX = 0, 65535
-
-
-class ScannerFormat(str, Enum):
-    """The tool whose report format an upload is parsed as."""
-
-    NMAP = "nmap"
 
 
 def merge_port_ranges(pairs: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:

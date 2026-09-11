@@ -12,6 +12,12 @@ class ImportMode(str, Enum):
     APPEND = "append"
 
 
+class ScannerFormat(str, Enum):
+    """The scanner tool whose CLI arguments are built, or whose report format is parsed."""
+
+    NMAP = "nmap"
+
+
 class PortProtocol(str, Enum):
     """Transport protocol of a scanned port."""
 

@@ -12,7 +12,7 @@ from fastapi import APIRouter, Body, Depends, File, Query, Response, UploadFile,
 from pydantic import ValidationError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from falcoria_contracts.enums import ImportMode
+from falcoria_contracts.enums import ImportMode, ScannerFormat
 from falcoria_scanledger.config import get_app_settings
 from falcoria_scanledger.constants import Tag
 from falcoria_scanledger.database import get_session
@@ -24,7 +24,6 @@ from falcoria_scanledger.ips.schemas import (
     IPImportResult,
     IPIn,
     IPOut,
-    ScannerFormat,
 )
 from falcoria_scanledger.ips.search import SEARCH_EXAMPLES, IPSearchRequest, IPSearchResult
 from falcoria_scanledger.projects.dependencies import validate_project_access
