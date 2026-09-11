@@ -31,7 +31,9 @@ def _patch_client(
         calls.append(request)
         return handler(request)
 
-    client = ScanledgerClient("http://scanledger.test", transport=httpx.MockTransport(record))
+    client = ScanledgerClient(
+        "http://scanledger.test", "svc-token", transport=httpx.MockTransport(record)
+    )
     monkeypatch.setattr("falcoria_tasker.security.get_scanledger_client", lambda: client)
     return calls
 
