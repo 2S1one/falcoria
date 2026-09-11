@@ -1,7 +1,10 @@
-# Local Postgres for scanledger development and the test suite.
-#   docker compose up -d postgres
+# Local Postgres for scanledger development and the test suite, plus a local
+# Temporal cluster (dev-only) for tasker development.
+#   docker compose up -d postgres temporal temporal-ui
 # `scanledger` is the dev database; the test suite creates and drops its own
 # `scanledger_test` on each run (see apps/scanledger/tests/conftest.py).
+# Temporal's own schema (`temporal` / `temporal_visibility` databases) is
+# auto-provisioned by `temporalio/auto-setup` into this same Postgres instance.
 
 name: falcoria
 
@@ -21,6 +24,66 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  temporal:
+    image: temporalio/auto-setup:1.29.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_USER: scanledger
+      POSTGRES_PWD: scanledger
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CLI_ADDRESS: temporal:7233
+    ports:
+      - "7233:7233"
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
+
+  temporal-admin-tools:
+    image: temporalio/admin-tools:1.29.1-tctl-1.18.4-cli-1.5.0
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CLI_ADDRESS: temporal:7233
+    stdin_open: true
+    tty: true
+
+  # Registers the `default` namespace on every `docker compose up`. Works around
+  # a bug in this image/version combo: auto-setup's own default-namespace step
+  # uses the `temporal` CLI's `operator cluster health`, which hangs forever
+  # with "context deadline exceeded" here — reproduced even against the
+  # unmodified upstream compose file. `tctl`'s equivalent call works fine, so
+  # this uses that instead. One-shot; exits once the namespace exists.
+  temporal-init:
+    image: temporalio/admin-tools:1.29.1-tctl-1.18.4-cli-1.5.0
+    depends_on:
+      - temporal
+    restart: "no"
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        until tctl --address temporal:7233 cluster health | grep -q SERVING; do
+          echo "Waiting for Temporal server..."; sleep 2
+        done
+        tctl --address temporal:7233 --namespace default namespace describe >/dev/null 2>&1 || \
+          tctl --address temporal:7233 --namespace default namespace register \
+            --retention 24h --desc "Default namespace for Temporal Server (dev)."
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8080:8080"
 
 volumes:
   pgdata:
