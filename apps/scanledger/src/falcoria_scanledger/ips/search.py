@@ -5,7 +5,7 @@ predicate groups. Each PortClause compiles to one correlated EXISTS over the IP'
 open ports, so every condition in a clause must hold on the *same* port row.
 """
 
-from ipaddress import ip_network
+from ipaddress import ip_address, ip_network
 from uuid import UUID
 
 from fastapi.openapi.models import Example
@@ -80,6 +80,9 @@ class IPFilter(BaseModel):
     cidr: str | None = Field(
         default=None, description="CIDR the address must fall within, e.g. 10.1.0.0/16."
     )
+    ip_in: list[str] | None = Field(
+        default=None, description="Match only these exact IPs (membership check)."
+    )
     os_ilike: str | None = Field(
         default=None, description="Reported OS contains this substring, case-insensitive."
     )
@@ -109,6 +112,11 @@ class IPFilter(BaseModel):
     def _normalise_cidr(cls, v: str | None) -> str | None:
         return None if v is None else str(ip_network(v, strict=False))
 
+    @field_validator("ip_in")
+    @classmethod
+    def _normalise_ip_in(cls, v: list[str] | None) -> list[str] | None:
+        return None if v is None else [str(ip_address(ip)) for ip in v]
+
 
 class IPSearchRequest(BaseModel):
     """Body of POST /ips/search: a filter, a page window, and the port projection."""
@@ -131,6 +139,11 @@ class IPSearchResult(BaseModel):
 
 
 SEARCH_EXAMPLES: dict[str, Example] = {
+    "known_ip_membership": Example(
+        summary="Which of these IPs are already known",
+        description="Membership check against a specific candidate set of IPs.",
+        value={"filter": {"ip_in": ["203.0.113.5", "203.0.113.6"]}, "limit": 2},
+    ),
     "cidr_and_port": Example(
         summary="RDP exposed in a subnet",
         description="Hosts in 203.0.113.0/24 with 3389/tcp open.",
@@ -290,6 +303,8 @@ def build_search_conditions(project_id: UUID, f: IPFilter) -> list[ColumnElement
 
     if f.cidr is not None:
         conds.append(cast(col(IPDB.ip), INET).op("<<=")(cast(f.cidr, INET)))
+    if f.ip_in:
+        conds.append(col(IPDB.ip).in_(f.ip_in))
     if f.os_ilike is not None:
         conds.append(col(IPDB.os).ilike(_contains(f.os_ilike), escape="\\"))
     if f.first_seen_gte is not None:

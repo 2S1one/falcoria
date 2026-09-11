@@ -200,6 +200,25 @@ async def test_cidr_is_normalised(session: AsyncSession, seeded: tuple[UUID, UUI
     assert "10.2.0.1" not in got
 
 
+async def test_ip_in_matches_exact_set(session: AsyncSession, seeded: tuple[UUID, UUID]) -> None:
+    pid, _ = seeded
+    got = await _ips(session, pid, IPFilter(ip_in=["10.1.0.1", "10.1.0.3", "10.9.9.9"]))
+
+    assert got == {"10.1.0.1", "10.1.0.3"}
+
+
+async def test_ip_in_is_project_scoped(session: AsyncSession, seeded: tuple[UUID, UUID]) -> None:
+    pid, _ = seeded
+    got = await _ips(session, pid, IPFilter(ip_in=["10.1.0.1", "192.0.2.1"]))
+
+    assert got == {"10.1.0.1"}
+
+
+def test_ip_in_rejects_malformed_ip() -> None:
+    with pytest.raises(ValueError, match="does not appear to be"):
+        IPFilter(ip_in=["not-an-ip"])
+
+
 async def test_os_ilike(session: AsyncSession, seeded: tuple[UUID, UUID]) -> None:
     pid, _ = seeded
     assert await _ips(session, pid, IPFilter(os_ilike="windows")) == {"10.1.0.2"}
