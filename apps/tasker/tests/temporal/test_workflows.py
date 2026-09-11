@@ -46,6 +46,7 @@ from falcoria_tasker.temporal.workflows import (
     already_running_ips,
     cancel_running_batches,
     cancel_running_scans_by_ips,
+    describe_task_queue_pollers,
     list_running_batches,
     list_running_scan_ids,
     query_progress,
@@ -484,3 +485,17 @@ async def test_terminate_if_still_running_is_a_noop_for_a_closed_workflow(
     await terminate_if_still_running(workflow_id)
 
     assert (await handle.describe()).status == WorkflowExecutionStatus.COMPLETED
+
+
+@pytest.mark.temporal
+async def test_describe_task_queue_pollers_reports_the_active_worker(
+    real_temporal: Client,
+) -> None:
+    await asyncio.sleep(0.5)
+
+    sightings = await describe_task_queue_pollers(PORT_SCANNER_TASK_QUEUE)
+
+    assert sightings
+    assert {s.poller_type for s in sightings} == {"workflow", "activity"}
+    assert all(s.identity == real_temporal.identity for s in sightings)
+    assert all(s.last_access_time is not None for s in sightings)

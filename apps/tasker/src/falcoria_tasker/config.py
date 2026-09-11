@@ -37,6 +37,9 @@ class AppSettings(BaseAppSettings):
             Env ``TASKER_SCANLEDGER_TOKEN``.
         dns_resolve_semaphore_limit: max concurrent in-flight DNS lookups
             during target resolution. Env ``TASKER_DNS_RESOLVE_SEMAPHORE_LIMIT``.
+        worker_poller_stale_seconds: how long since a poller's last activity
+            before it's dropped from the fleet view. Env
+            ``TASKER_WORKER_POLLER_STALE_SECONDS``.
     """
 
     env: Env = Env.LOCAL
@@ -45,6 +48,7 @@ class AppSettings(BaseAppSettings):
     scanledger_base_url: str
     scanledger_token: SecretStr
     dns_resolve_semaphore_limit: int = 100
+    worker_poller_stale_seconds: int = 90
 
 
 @lru_cache

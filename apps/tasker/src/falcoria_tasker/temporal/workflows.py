@@ -1,8 +1,15 @@
 """Impure Temporal Client operations: starting, querying, and cancelling scan workflows."""
 
 import asyncio
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID
 
+from google.protobuf.timestamp_pb2 import Timestamp
+from temporalio.api.enums.v1 import TaskQueueType
+from temporalio.api.taskqueue.v1 import TaskQueue
+from temporalio.api.workflowservice.v1 import DescribeTaskQueueRequest
 from temporalio.client import (
     WorkflowExecution,
     WorkflowExecutionAsyncIterator,
@@ -199,3 +206,49 @@ async def terminate_if_still_running(workflow_id: str) -> None:
     description = await handle.describe()
     if description.status is WorkflowExecutionStatus.RUNNING:
         await handle.terminate()
+
+
+@dataclass(slots=True)
+class PollerSighting:
+    """One poller entry read from a DescribeTaskQueue response."""
+
+    identity: str
+    last_access_time: datetime | None
+    poller_type: Literal["workflow", "activity"]
+
+
+def _timestamp_to_datetime(ts: Timestamp) -> datetime | None:
+    if ts.seconds == 0 and ts.nanos == 0:
+        return None
+    return ts.ToDatetime(tzinfo=UTC)
+
+
+async def describe_task_queue_pollers(queue_name: str) -> list[PollerSighting]:
+    """Lists every poller currently reported for queue_name, across both poller types."""
+    client = get_temporal_client()
+
+    async def _pollers(
+        task_queue_type: TaskQueueType.ValueType, poller_type: Literal["workflow", "activity"]
+    ) -> list[PollerSighting]:
+        response = await client.workflow_service.describe_task_queue(
+            DescribeTaskQueueRequest(
+                namespace=client.namespace,
+                task_queue=TaskQueue(name=queue_name),
+                task_queue_type=task_queue_type,
+            )
+        )
+        return [
+            PollerSighting(
+                identity=poller.identity,
+                last_access_time=_timestamp_to_datetime(poller.last_access_time),
+                poller_type=poller_type,
+            )
+            for poller in response.pollers
+            if poller.identity
+        ]
+
+    workflow_pollers, activity_pollers = await asyncio.gather(
+        _pollers(TaskQueueType.TASK_QUEUE_TYPE_WORKFLOW, "workflow"),
+        _pollers(TaskQueueType.TASK_QUEUE_TYPE_ACTIVITY, "activity"),
+    )
+    return workflow_pollers + activity_pollers

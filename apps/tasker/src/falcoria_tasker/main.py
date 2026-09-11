@@ -11,8 +11,9 @@ from falcoria_tasker.dns import dispose_dns_resolver, init_dns_resolver
 from falcoria_tasker.exceptions import register_exception_handlers
 from falcoria_tasker.scanledger import dispose_scanledger_client
 from falcoria_tasker.scans.router import router as scans_router
-from falcoria_tasker.security import require_project_access
+from falcoria_tasker.security import require_project_access, require_token
 from falcoria_tasker.temporal.client import connect_temporal, dispose_temporal
+from falcoria_tasker.workers.router import router as workers_router
 
 
 @asynccontextmanager
@@ -44,6 +45,12 @@ def create_app() -> FastAPI:
         scans_router,
         prefix=f"{settings.api_prefix}/projects/{{project_id}}/scans",
         dependencies=[Depends(require_project_access)],
+        responses=AUTH_RESPONSES,
+    )
+    app.include_router(
+        workers_router,
+        prefix=f"{settings.api_prefix}/workers",
+        dependencies=[Depends(require_token)],
         responses=AUTH_RESPONSES,
     )
 
