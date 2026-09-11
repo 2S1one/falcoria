@@ -27,6 +27,7 @@ It is being rebuilt from scratch, file-by-file along the data flow, `scanledger`
 | Lint (autofix) | `uv run ruff check . --fix` |
 | Type-check | `uv run pyright` |
 | Test — all | `uv run pytest` |
+| Test — fast (no Postgres/Temporal) | `uv run pytest -m "not postgres and not temporal"` |
 | Test — one node | `uv run pytest apps/scanledger/tests/test_foo.py::test_bar` |
 
 Run `uv` from the repo root — from inside a member directory `uv add` / `uv sync`

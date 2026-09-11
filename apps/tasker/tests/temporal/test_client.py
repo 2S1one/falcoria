@@ -5,7 +5,7 @@ import pytest
 from falcoria_tasker.config import get_temporal_settings
 from falcoria_tasker.temporal.client import connect_temporal, dispose_temporal, get_temporal_client
 
-pytestmark = pytest.mark.anyio
+pytestmark = [pytest.mark.anyio, pytest.mark.temporal]
 
 
 async def test_connect_temporal_connects_to_a_running_server(

@@ -92,3 +92,7 @@ venv = ".venv"
 [tool.pytest.ini_options]
 addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib"]
 testpaths = ["packages", "apps"]
+markers = [
+    "postgres: requires a real Postgres instance (docker compose up -d postgres)",
+    "temporal: requires a real Temporal cluster (docker compose up -d temporal)",
+]

@@ -76,13 +76,14 @@ def _schema() -> None:
 
 
 @pytest.fixture
-async def session(_schema: None) -> AsyncIterator[AsyncSession]:
+async def session(request: pytest.FixtureRequest, _schema: None) -> AsyncIterator[AsyncSession]:
     """Yields a session inside a transaction that is rolled back after the test.
 
     ``create_savepoint`` mode means every ``commit()`` / ``rollback()`` in the code
     under test acts on a SAVEPOINT, never the outer transaction — so committing
     services observe their writes while nothing persists between tests.
     """
+    request.node.add_marker(pytest.mark.postgres)
     engine = create_async_engine(_pg_url(_TEST_DB))
     connection = await engine.connect()
     transaction = await connection.begin()
