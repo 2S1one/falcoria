@@ -4,9 +4,11 @@
 members = ["packages/*", "apps/*"]
 
 # Workspace-wide source overrides — inherited by every member, so a new app that
-# depends on falcoria-contracts needs no [tool.uv.sources] table of its own.
+# depends on falcoria-contracts / falcoria-temporal needs no [tool.uv.sources]
+# table of its own.
 [tool.uv.sources]
 falcoria-contracts = { workspace = true }
+falcoria-temporal = { workspace = true }
 
 [dependency-groups]
 dev = [
