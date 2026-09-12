@@ -64,6 +64,20 @@ async def _build_schema() -> None:
         await engine.dispose()
 
 
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Marks every test that (directly or via `client`) uses the `session` fixture as `postgres`.
+
+    A marker added from inside a fixture (`request.node.add_marker(...)`) runs too late to
+    affect `-m` deselection, which happens at collection time before any fixture executes —
+    this hook is the fixture-agnostic way to do it correctly. `item.fixturenames` already
+    includes `session` for any test using `client` too, since pytest resolves the full
+    transitive fixture closure before collection.
+    """
+    for item in items:
+        if isinstance(item, pytest.Function) and "session" in item.fixturenames:
+            item.add_marker(pytest.mark.postgres)
+
+
 @pytest.fixture(scope="session")
 def _schema() -> None:
     """Build a fresh scanledger_test schema once for the whole test session.
@@ -76,14 +90,13 @@ def _schema() -> None:
 
 
 @pytest.fixture
-async def session(request: pytest.FixtureRequest, _schema: None) -> AsyncIterator[AsyncSession]:
+async def session(_schema: None) -> AsyncIterator[AsyncSession]:
     """Yields a session inside a transaction that is rolled back after the test.
 
     ``create_savepoint`` mode means every ``commit()`` / ``rollback()`` in the code
     under test acts on a SAVEPOINT, never the outer transaction — so committing
     services observe their writes while nothing persists between tests.
     """
-    request.node.add_marker(pytest.mark.postgres)
     engine = create_async_engine(_pg_url(_TEST_DB))
     connection = await engine.connect()
     transaction = await connection.begin()
