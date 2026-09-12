@@ -13,6 +13,7 @@ members = [
     "falcoria-scanledger",
     "falcoria-tasker",
     "falcoria-temporal",
+    "falcoria-worker",
 ]
 
 [manifest.dependency-groups]
@@ -332,6 +333,31 @@ dependencies = [
 requires-dist = [
     { name = "falcoria-contracts", editable = "packages/falcoria-contracts" },
     { name = "temporalio", extras = ["pydantic"] },
+]
+
+[[package]]
+name = "falcoria-worker"
+version = "0.1.0"
+source = { editable = "apps/worker" }
+dependencies = [
+    { name = "defusedxml" },
+    { name = "falcoria-contracts" },
+    { name = "falcoria-http" },
+    { name = "falcoria-temporal" },
+    { name = "httpx" },
+    { name = "pydantic-settings" },
+    { name = "temporalio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "defusedxml", specifier = ">=0.7.1" },
+    { name = "falcoria-contracts", editable = "packages/falcoria-contracts" },
+    { name = "falcoria-http", editable = "packages/falcoria-http" },
+    { name = "falcoria-temporal", editable = "packages/falcoria-temporal" },
+    { name = "httpx" },
+    { name = "pydantic-settings" },
+    { name = "temporalio" },
 ]
 
 [[package]]
