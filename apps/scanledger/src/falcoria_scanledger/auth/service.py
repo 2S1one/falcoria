@@ -81,9 +81,9 @@ async def _upsert_primary_user(session: AsyncSession, username: str, token: str)
 
 
 async def ensure_primary_users(
-    session: AsyncSession, *, admin_token: str, tasker_token: str
+    session: AsyncSession, *, admin_token: str, tasker_token: str, worker_token: str
 ) -> None:
-    """Creates or re-syncs the `admin` and `tasker` accounts from configuration.
+    """Creates or re-syncs the `admin`, `tasker`, and `worker` accounts from configuration.
 
     Runs on every startup: concurrency-safe (atomic ``INSERT ... ON CONFLICT DO
     UPDATE`` keyed on username) and it overwrites each account's stored token
@@ -91,9 +91,10 @@ async def ensure_primary_users(
     effect on the next boot.
 
     Raises:
-        ValueError: `admin_token` and `tasker_token` are equal.
+        ValueError: any two of the three tokens are equal.
     """
-    if admin_token == tasker_token:
-        raise ValueError("admin and tasker tokens must differ")
+    if admin_token in (tasker_token, worker_token) or tasker_token == worker_token:
+        raise ValueError("admin, tasker, and worker tokens must all differ")
     await _upsert_primary_user(session, "admin", admin_token)
     await _upsert_primary_user(session, "tasker", tasker_token)
+    await _upsert_primary_user(session, "worker", worker_token)

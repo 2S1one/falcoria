@@ -7,6 +7,7 @@ import pytest
 # env vars still win via setdefault.
 os.environ.setdefault("SCANLEDGER_ADMIN_TOKEN", "test-admin-token")
 os.environ.setdefault("SCANLEDGER_TASKER_TOKEN", "test-tasker-token")
+os.environ.setdefault("SCANLEDGER_WORKER_TOKEN", "test-worker-token")
 os.environ.setdefault("TASKER_SCANLEDGER_BASE_URL", "http://scanledger.test/api")
 os.environ.setdefault("TASKER_SCANLEDGER_TOKEN", "test-tasker-token")
 os.environ.setdefault("WORKER_SCANLEDGER_BASE_URL", "http://scanledger.test/api")

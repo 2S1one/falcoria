@@ -33,7 +33,9 @@ class AppSettings(BaseAppSettings):
         admin_token: bearer token for the seeded ``admin`` account. Env
             ``SCANLEDGER_ADMIN_TOKEN``. Re-applied to the DB on every startup.
         tasker_token: bearer token for the seeded ``tasker`` account. Env
-            ``SCANLEDGER_TASKER_TOKEN``. Must differ from ``admin_token``.
+            ``SCANLEDGER_TASKER_TOKEN``. Must differ from the other seed tokens.
+        worker_token: bearer token for the seeded ``worker`` account. Env
+            ``SCANLEDGER_WORKER_TOKEN``. Must differ from the other seed tokens.
         max_report_bytes: reject a scan-report upload larger than this. Env
             ``SCANLEDGER_MAX_REPORT_BYTES``. Default 25 MiB.
     """
@@ -43,6 +45,7 @@ class AppSettings(BaseAppSettings):
     api_prefix: str = "/api"
     admin_token: SecretStr
     tasker_token: SecretStr
+    worker_token: SecretStr
     max_report_bytes: int = 25 * 1024 * 1024
 
 
