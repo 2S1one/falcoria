@@ -263,7 +263,12 @@ async def get_scan_status(project_id: UUID, scan_id: str) -> ScanStatusResponse 
     """
     settings = get_app_settings()
     progress, targets = await asyncio.gather(
-        workflows.scan_progress(project_id, scan_id, settings.scan_progress_semaphore_limit),
+        workflows.scan_progress(
+            project_id,
+            scan_id,
+            settings.scan_progress_semaphore_limit,
+            settings.scan_progress_query_timeout_seconds,
+        ),
         workflows.running_ips(project_id, scan_id),
     )
     if progress is None:

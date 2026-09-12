@@ -1,8 +1,9 @@
 """Impure Temporal Client operations: starting, querying, and cancelling scan workflows."""
 
 import asyncio
+import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Literal
 from uuid import UUID, uuid4
@@ -16,6 +17,7 @@ from temporalio.client import (
     WorkflowExecutionAsyncIterator,
     WorkflowExecutionStatus,
 )
+from temporalio.service import RPCError
 
 from falcoria_contracts.enums import ImportMode
 from falcoria_contracts.scan_io import ScanBatchInput, ScanBatchResult, ScanTask
@@ -36,6 +38,8 @@ from falcoria_tasker.temporal.visibility import (
     running_scan_targets_query,
     running_scans_query,
 )
+
+logger = logging.getLogger("falcoria_tasker")
 
 
 async def start_batch_workflows(
@@ -70,10 +74,35 @@ def list_running_batches(project_id: UUID) -> WorkflowExecutionAsyncIterator:
     return get_temporal_client().list_workflows(running_batch_query(project_id))
 
 
-async def query_progress(workflow_id: str) -> ScanBatchResult:
-    """Queries a running ScanBatchWorkflow's current task-completion counts."""
+async def query_progress(workflow_id: str, *, timeout_seconds: float = 2.0) -> ScanBatchResult:
+    """Queries a running ScanBatchWorkflow's current task-completion counts.
+
+    Bounded by timeout_seconds rather than the default 30s gRPC deadline - a
+    batch queued with no worker polling its task queue would otherwise hang
+    a status request for the full default deadline.
+    """
     handle = get_temporal_client().get_workflow_handle(workflow_id)
-    return await handle.query(QUERY_GET_PROGRESS, result_type=ScanBatchResult)
+    return await handle.query(
+        QUERY_GET_PROGRESS,
+        result_type=ScanBatchResult,
+        rpc_timeout=timedelta(seconds=timeout_seconds),
+    )
+
+
+async def _safe_query_progress(workflow_id: str, timeout_seconds: float) -> ScanBatchResult | None:
+    """Queries workflow_id's progress, or None if the query itself failed.
+
+    A batch that was never picked up by a worker (queued, or cancelled before
+    any worker started its first task) can't serve a query at all - Temporal
+    raises RPCError rather than returning a result. That's a query-layer
+    failure, not evidence the batch made no progress, so it's logged and
+    excluded from the aggregate rather than reported as zero.
+    """
+    try:
+        return await query_progress(workflow_id, timeout_seconds=timeout_seconds)
+    except RPCError:
+        logger.warning("Failed to query progress for batch workflow %s.", workflow_id)
+        return None
 
 
 async def signal_cancel(workflow_id: str) -> None:
@@ -157,15 +186,17 @@ class ScanProgress:
 
 
 async def scan_progress(
-    project_id: UUID, scan_id: str, semaphore_limit: int
+    project_id: UUID, scan_id: str, semaphore_limit: int, query_timeout_seconds: float
 ) -> ScanProgress | None:
     """Aggregates total/completed/failed and overall state across a scan's batch workflows.
 
     Always queries each batch live via query_progress(), regardless of its
     Temporal execution status - querying a closed workflow isn't guaranteed
-    servable via .result(), but a query always is. Concurrency is capped at
-    semaphore_limit in-flight queries. Returns None if no batch workflow was
-    ever started for scan_id.
+    servable via .result(), but a query always is. state comes entirely from
+    Temporal visibility metadata (execution.status), independent of query
+    success, so it's always reported even if every query below fails.
+    Concurrency is capped at semaphore_limit in-flight queries. Returns None
+    if no batch workflow was ever started for scan_id.
     """
     client = get_temporal_client()
     executions = [
@@ -174,9 +205,11 @@ async def scan_progress(
     if not executions:
         return None
 
-    results = await bounded_gather(
-        (query_progress(execution.id) for execution in executions), semaphore_limit
+    queried = await bounded_gather(
+        (_safe_query_progress(execution.id, query_timeout_seconds) for execution in executions),
+        semaphore_limit,
     )
+    results = [r for r in queried if r is not None]
     statuses = {execution.status for execution in executions}
     if WorkflowExecutionStatus.RUNNING in statuses:
         state = BatchState.RUNNING

@@ -413,7 +413,7 @@ async def test_get_scan_status_returns_none_for_an_unknown_scan(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def fake_scan_progress(
-        project_id: UUID, scan_id: str, semaphore_limit: int
+        project_id: UUID, scan_id: str, semaphore_limit: int, query_timeout_seconds: float
     ) -> ScanProgress | None:
         return None
 
@@ -430,7 +430,7 @@ async def test_get_scan_status_combines_progress_and_running_targets(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def fake_scan_progress(
-        project_id: UUID, scan_id: str, semaphore_limit: int
+        project_id: UUID, scan_id: str, semaphore_limit: int, query_timeout_seconds: float
     ) -> ScanProgress | None:
         return ScanProgress(total=3, completed=1, failed=0, state=BatchState.RUNNING)
 

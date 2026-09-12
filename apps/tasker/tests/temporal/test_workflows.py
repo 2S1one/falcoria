@@ -359,7 +359,10 @@ async def test_list_running_scan_ids_returns_distinct_ids(real_temporal: Client)
 
 @pytest.mark.temporal
 async def test_scan_progress_returns_none_for_an_unknown_scan(real_temporal: Client) -> None:
-    assert await scan_progress(PROJECT_ID, str(uuid4()), semaphore_limit=10) is None
+    assert (
+        await scan_progress(PROJECT_ID, str(uuid4()), semaphore_limit=10, query_timeout_seconds=2.0)
+        is None
+    )
 
 
 @pytest.mark.temporal
@@ -373,7 +376,9 @@ async def test_scan_progress_aggregates_running_batches(real_temporal: Client) -
     try:
         await asyncio.sleep(0.5)
 
-        progress = await scan_progress(PROJECT_ID, scan_id, semaphore_limit=10)
+        progress = await scan_progress(
+            PROJECT_ID, scan_id, semaphore_limit=10, query_timeout_seconds=2.0
+        )
 
         assert progress is not None
         assert progress.total == 3
@@ -395,11 +400,54 @@ async def test_scan_progress_queries_a_closed_workflow_live(real_temporal: Clien
     await handle.result()
     await asyncio.sleep(0.5)
 
-    progress = await scan_progress(PROJECT_ID, scan_id, semaphore_limit=10)
+    progress = await scan_progress(
+        PROJECT_ID, scan_id, semaphore_limit=10, query_timeout_seconds=2.0
+    )
 
     assert progress is not None
     assert progress.total == 1
     assert progress.state is BatchState.COMPLETED
+
+
+@pytest.mark.temporal
+async def test_scan_progress_excludes_a_batch_whose_query_fails(real_temporal: Client) -> None:
+    """A batch queued on a task queue no worker polls can't serve its query at all.
+
+    Confirms scan_progress degrades gracefully (bounded by query_timeout_seconds,
+    not the default 30s deadline) instead of hanging or raising - state still
+    comes from visibility metadata, which is unaffected by the query failure.
+    A short timeout keeps this test fast rather than waiting out a realistic
+    production value.
+    """
+    scan_id = str(uuid4())
+    workflow_id = f"batch-{uuid4()}"
+    await real_temporal.start_workflow(
+        SCAN_BATCH_WORKFLOW_NAME,
+        ScanBatchInput(project_id=str(PROJECT_ID), scan_id=scan_id, tasks=_one_task()),
+        id=workflow_id,
+        task_queue="no-worker-queue",
+        search_attributes=TypedSearchAttributes(
+            [
+                SearchAttributePair(SA_PROJECT_ID, str(PROJECT_ID)),
+                SearchAttributePair(SA_SCAN_ID, scan_id),
+            ]
+        ),
+        result_type=ScanBatchResult,
+    )
+    try:
+        await asyncio.sleep(0.5)
+
+        progress = await scan_progress(
+            PROJECT_ID, scan_id, semaphore_limit=10, query_timeout_seconds=0.5
+        )
+
+        assert progress is not None
+        assert progress.total == 0
+        assert progress.completed == 0
+        assert progress.failed == 0
+        assert progress.state is BatchState.RUNNING
+    finally:
+        await real_temporal.get_workflow_handle(workflow_id).terminate()
 
 
 @pytest.mark.temporal

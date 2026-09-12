@@ -40,6 +40,10 @@ class AppSettings(BaseAppSettings):
         scan_progress_semaphore_limit: max concurrent in-flight batch-progress
             queries when aggregating one scan's status. Env
             ``TASKER_SCAN_PROGRESS_SEMAPHORE_LIMIT``.
+        scan_progress_query_timeout_seconds: per-batch RPC timeout for a
+            progress query, so a batch with no worker polling its task queue
+            can't hang a status request for the default 30s gRPC deadline. Env
+            ``TASKER_SCAN_PROGRESS_QUERY_TIMEOUT_SECONDS``.
         worker_poller_stale_seconds: how long since a poller's last activity
             before it's dropped from the fleet view. Env
             ``TASKER_WORKER_POLLER_STALE_SECONDS``.
@@ -52,6 +56,7 @@ class AppSettings(BaseAppSettings):
     scanledger_token: SecretStr
     dns_resolve_semaphore_limit: int = 100
     scan_progress_semaphore_limit: int = 50
+    scan_progress_query_timeout_seconds: float = 2.0
     worker_poller_stale_seconds: int = 90
 
 
