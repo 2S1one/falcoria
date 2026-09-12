@@ -9,6 +9,7 @@ resolution-markers = [
 [manifest]
 members = [
     "falcoria-contracts",
+    "falcoria-http",
     "falcoria-scanledger",
     "falcoria-tasker",
     "falcoria-temporal",
@@ -254,6 +255,17 @@ dependencies = [
 requires-dist = [{ name = "pydantic", specifier = ">=2" }]
 
 [[package]]
+name = "falcoria-http"
+version = "0.1.0"
+source = { editable = "packages/falcoria-http" }
+dependencies = [
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "httpx" }]
+
+[[package]]
 name = "falcoria-scanledger"
 version = "0.1.0"
 source = { editable = "apps/scanledger" }
@@ -287,6 +299,7 @@ source = { editable = "apps/tasker" }
 dependencies = [
     { name = "aiodns" },
     { name = "falcoria-contracts" },
+    { name = "falcoria-http" },
     { name = "falcoria-temporal" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -298,6 +311,7 @@ dependencies = [
 requires-dist = [
     { name = "aiodns" },
     { name = "falcoria-contracts", editable = "packages/falcoria-contracts" },
+    { name = "falcoria-http", editable = "packages/falcoria-http" },
     { name = "falcoria-temporal", editable = "packages/falcoria-temporal" },
     { name = "fastapi" },
     { name = "httpx" },

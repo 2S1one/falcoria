@@ -10,6 +10,7 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from falcoria_http.transport import RetryingTransport
 
 from falcoria_contracts.enums import ImportMode
 from falcoria_tasker.config import get_app_settings
@@ -35,7 +36,9 @@ class ScanledgerClient:
         service_token: str,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        self._client = httpx.AsyncClient(base_url=base_url, transport=transport)
+        self._client = httpx.AsyncClient(
+            base_url=base_url, transport=transport if transport is not None else RetryingTransport()
+        )
         self._service_token = service_token
 
     async def aclose(self) -> None:

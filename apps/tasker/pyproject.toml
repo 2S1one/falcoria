@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "falcoria-contracts",
     "falcoria-temporal",
+    "falcoria-http",
     "fastapi",
     "temporalio",
     "httpx",

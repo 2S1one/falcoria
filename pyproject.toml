@@ -9,6 +9,7 @@ members = ["packages/*", "apps/*"]
 [tool.uv.sources]
 falcoria-contracts = { workspace = true }
 falcoria-temporal = { workspace = true }
+falcoria-http = { workspace = true }
 
 [dependency-groups]
 dev = [

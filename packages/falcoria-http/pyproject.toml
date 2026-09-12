@@ -1,0 +1,13 @@
+[project]
+name = "falcoria-http"
+version = "0.1.0"
+description = "Shared retrying HTTP transport (httpx) for tasker/worker service-to-service calls."
+requires-python = ">=3.12"
+dependencies = ["httpx"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/falcoria_http"]
