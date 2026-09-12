@@ -9,6 +9,7 @@ dependencies = [
     "falcoria-http",
     "falcoria-logging",
     "fastapi",
+    "uvicorn[standard]",
     "temporalio",
     "httpx",
     "aiodns",

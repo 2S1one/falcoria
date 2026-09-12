@@ -286,6 +286,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "python-multipart" },
     { name = "sqlmodel" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.metadata]
@@ -299,6 +300,7 @@ requires-dist = [
     { name = "pydantic-settings" },
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "sqlmodel" },
+    { name = "uvicorn", extras = ["standard"] },
 ]
 
 [[package]]
@@ -315,6 +317,7 @@ dependencies = [
     { name = "httpx" },
     { name = "pydantic-settings" },
     { name = "temporalio" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.metadata]
@@ -328,6 +331,7 @@ requires-dist = [
     { name = "httpx" },
     { name = "pydantic-settings" },
     { name = "temporalio" },
+    { name = "uvicorn", extras = ["standard"] },
 ]
 
 [[package]]
