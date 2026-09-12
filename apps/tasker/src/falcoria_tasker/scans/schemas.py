@@ -1,6 +1,7 @@
 """Scan option and request/response DTOs."""
 
 import re
+from enum import Enum
 from ipaddress import IPv4Address, IPv4Network, ip_address, ip_network
 
 from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
@@ -30,7 +31,7 @@ class OpenPortsOpts(CommonScanOpts):
     """Options for the open-ports discovery phase, which always runs."""
 
     transport_protocol: PortProtocol = PortProtocol.TCP
-    ports: list[str] = Field(description="Ports or ranges, e.g. '22', '1000-2000'.")
+    ports: list[str] = Field(min_length=1, description="Ports or ranges, e.g. '22', '1000-2000'.")
     skip_host_discovery: bool = Field(default=True, description="-Pn")
 
     @field_validator("ports")
@@ -125,25 +126,20 @@ class RunScanRequest(BaseModel):
         return [_validate_host(host) for host in hosts]
 
 
-class CancelScanRequest(BaseModel):
-    """Cancels a scan by scan_id, by ips, or (both omitted) every running scan in the project."""
+class CancelByIpsRequest(BaseModel):
+    """Cancels every running per-IP scan workflow matching any of ips."""
 
-    scan_id: str | None = None
-    ips: list[str] | None = None
+    ips: list[str] = Field(min_length=1)
 
-    @field_validator("ips", mode="before")
+    @field_validator("ips")
     @classmethod
-    def _validate_ips(cls, ips: list[str] | None) -> list[str] | None:
-        if ips is None:
-            return None
-        validated = []
+    def _validate_ips(cls, ips: list[str]) -> list[str]:
         for ip in ips:
             try:
                 ip_address(ip)
             except ValueError:
                 raise ValueError(f'Invalid IP address: "{ip}"') from None
-            validated.append(ip)
-        return validated or None
+        return ips
 
 
 class SkippedCounts(BaseModel):
@@ -173,8 +169,8 @@ class ScanSummary(BaseModel):
 
     provided: int
     duplicates_removed: int
-    resolved_ips: int
-    hostnames_collapsed_to_ip: int = 0
+    target_ips: int
+    attached_hostnames: int = 0
     skipped: SkippedCounts = Field(default_factory=SkippedCounts)
     started: int
 
@@ -183,10 +179,10 @@ class ScanSummary(BaseModel):
         post_resolution_skipped = (
             self.skipped.already_known + self.skipped.already_running + self.skipped.other
         )
-        expected = self.resolved_ips - post_resolution_skipped
+        expected = self.target_ips - post_resolution_skipped
         if self.started != expected:
             raise ValueError(
-                f"started={self.started} != resolved_ips({self.resolved_ips}) "
+                f"started={self.started} != target_ips({self.target_ips}) "
                 f"- post_resolution_skipped({post_resolution_skipped})"
             )
         return self
@@ -227,10 +223,20 @@ class RunningTarget(BaseModel):
     worker: str | None
 
 
+class ScanState(str, Enum):
+    """Overall execution state of a scan, derived from its batch workflows' statuses."""
+
+    RUNNING = "running"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
 class ScanStatusResponse(BaseModel):
     """Progress of one scan: task-completion counts plus its currently running targets."""
 
     total: int
     completed: int
     failed: int
+    state: ScanState
     running_targets: list[RunningTarget] = Field(default_factory=list)

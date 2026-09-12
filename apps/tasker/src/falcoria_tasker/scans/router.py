@@ -9,7 +9,7 @@ from falcoria_tasker.constants import Tag
 from falcoria_tasker.exceptions import NotFound
 from falcoria_tasker.scans import service
 from falcoria_tasker.scans.schemas import (
-    CancelScanRequest,
+    CancelByIpsRequest,
     CancelScanResponse,
     RunScanRequest,
     RunScanResponse,
@@ -45,7 +45,22 @@ async def get_scan_status(project_id: UUID, scan_id: str) -> ScanStatusResponse:
     return result
 
 
+@router.post("/{scan_id}/cancel")
+async def cancel_scan_by_id(project_id: UUID, scan_id: str) -> CancelScanResponse:
+    """Signals a graceful cancel on scan_id's batch workflows, force-terminating stragglers later."""
+    await service.cancel_batches(project_id, scan_id)
+    return CancelScanResponse()
+
+
 @router.post("/cancel")
-async def cancel_scan(project_id: UUID, request: CancelScanRequest) -> CancelScanResponse:
-    """Cancels a scan by scan_id, by ips, or - both omitted - every running scan."""
-    return await service.cancel_scan(project_id, request)
+async def cancel_all_scans(project_id: UUID) -> CancelScanResponse:
+    """Signals a graceful cancel on every running scan in the project, force-terminating stragglers later."""
+    await service.cancel_batches(project_id, None)
+    return CancelScanResponse()
+
+
+@router.post("/cancel-ips")
+async def cancel_scan_by_ips(project_id: UUID, request: CancelByIpsRequest) -> CancelScanResponse:
+    """Signals a graceful cancel on every running per-IP scan workflow matching request.ips."""
+    await service.cancel_by_ips(project_id, request.ips)
+    return CancelScanResponse()

@@ -3,15 +3,16 @@
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import Enum
 from typing import Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from google.protobuf.timestamp_pb2 import Timestamp
+from temporalio.api.batch.v1 import BatchOperationCancellation, BatchOperationTermination
 from temporalio.api.enums.v1 import TaskQueueType
 from temporalio.api.taskqueue.v1 import TaskQueue
-from temporalio.api.workflowservice.v1 import DescribeTaskQueueRequest
+from temporalio.api.workflowservice.v1 import DescribeTaskQueueRequest, StartBatchOperationRequest
 from temporalio.client import (
-    WorkflowExecution,
     WorkflowExecutionAsyncIterator,
     WorkflowExecutionStatus,
 )
@@ -23,7 +24,7 @@ from falcoria_contracts.temporal_names import (
     QUERY_GET_PROGRESS,
     SCAN_BATCH_WORKFLOW_NAME,
 )
-from falcoria_tasker.constants import CANCEL_BATCH_SIZE
+from falcoria_tasker.concurrency import bounded_gather
 from falcoria_tasker.temporal.client import get_temporal_client
 from falcoria_tasker.temporal.visibility import (
     batch_workflow_id,
@@ -31,10 +32,9 @@ from falcoria_tasker.temporal.visibility import (
     build_batch_search_attrs,
     extract_ip_from_search_attrs,
     extract_scan_id_from_search_attrs,
-    running_batch_by_scan_query,
     running_batch_query,
     running_scan_targets_query,
-    running_scans_by_ips_query,
+    running_scans_query,
 )
 
 
@@ -94,11 +94,12 @@ async def already_running_ips(project_id: UUID, ips: list[str]) -> set[str]:
     """
     if not ips:
         return set()
+    candidates = set(ips)
     client = get_temporal_client()
     running: set[str] = set()
-    async for workflow in client.list_workflows(running_scans_by_ips_query(project_id, ips)):
+    async for workflow in client.list_workflows(running_scans_query(project_id)):
         ip = extract_ip_from_search_attrs(workflow.typed_search_attributes)
-        if ip:
+        if ip and ip in candidates:
             running.add(ip)
     return running
 
@@ -136,12 +137,35 @@ async def list_running_scan_ids(project_id: UUID) -> set[str]:
     return scan_ids
 
 
-async def scan_progress(project_id: UUID, scan_id: str) -> ScanBatchResult | None:
-    """Aggregates total/completed/failed across every batch workflow of one scan.
+class BatchState(str, Enum):
+    """Overall execution state of a scan's batch workflows, derived from their Temporal status."""
 
-    A still-running batch is queried live; a closed one returns its stored
-    result directly - querying a closed workflow execution isn't guaranteed
-    servable. Returns None if no batch workflow was ever started for scan_id.
+    RUNNING = "running"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+@dataclass(slots=True)
+class ScanProgress:
+    """Aggregated task-completion counts and overall state for one scan's batch workflows."""
+
+    total: int
+    completed: int
+    failed: int
+    state: BatchState
+
+
+async def scan_progress(
+    project_id: UUID, scan_id: str, semaphore_limit: int
+) -> ScanProgress | None:
+    """Aggregates total/completed/failed and overall state across a scan's batch workflows.
+
+    Always queries each batch live via query_progress(), regardless of its
+    Temporal execution status - querying a closed workflow isn't guaranteed
+    servable via .result(), but a query always is. Concurrency is capped at
+    semaphore_limit in-flight queries. Returns None if no batch workflow was
+    ever started for scan_id.
     """
     client = get_temporal_client()
     executions = [
@@ -150,62 +174,53 @@ async def scan_progress(project_id: UUID, scan_id: str) -> ScanBatchResult | Non
     if not executions:
         return None
 
-    async def _progress(execution: WorkflowExecution) -> ScanBatchResult:
-        if execution.status is WorkflowExecutionStatus.RUNNING:
-            return await query_progress(execution.id)
-        handle = client.get_workflow_handle(execution.id, result_type=ScanBatchResult)
-        return await handle.result()
+    results = await bounded_gather(
+        (query_progress(execution.id) for execution in executions), semaphore_limit
+    )
+    statuses = {execution.status for execution in executions}
+    if WorkflowExecutionStatus.RUNNING in statuses:
+        state = BatchState.RUNNING
+    elif statuses & {WorkflowExecutionStatus.CANCELED, WorkflowExecutionStatus.TERMINATED}:
+        state = BatchState.CANCELLED
+    elif statuses & {WorkflowExecutionStatus.FAILED, WorkflowExecutionStatus.TIMED_OUT}:
+        state = BatchState.FAILED
+    else:
+        state = BatchState.COMPLETED
 
-    results = await asyncio.gather(*(_progress(execution) for execution in executions))
-    return ScanBatchResult(
+    return ScanProgress(
         total=sum(r.total for r in results),
         completed=sum(r.completed for r in results),
         failed=sum(r.failed for r in results),
+        state=state,
     )
 
 
-async def cancel_running_batches(project_id: UUID, scan_id: str | None) -> list[str]:
-    """Signals cancel on every running batch workflow, optionally scoped to scan_id.
-
-    Returns the cancelled workflow ids.
-    """
+async def start_cancel_batch(query: str) -> None:
+    """Requests a graceful cancel, via batch operation, of everything matching query."""
     client = get_temporal_client()
-    query = (
-        running_batch_query(project_id)
-        if scan_id is None
-        else running_batch_by_scan_query(project_id, scan_id)
+    await client.workflow_service.start_batch_operation(
+        StartBatchOperationRequest(
+            namespace=client.namespace,
+            visibility_query=query,
+            job_id=str(uuid4()),
+            reason="scan cancel requested",
+            cancellation_operation=BatchOperationCancellation(),
+        )
     )
-    workflow_ids = [wf.id async for wf in client.list_workflows(query)]
-    await asyncio.gather(*(client.get_workflow_handle(wid).cancel() for wid in workflow_ids))
-    return workflow_ids
 
 
-async def cancel_running_scans_by_ips(project_id: UUID, ips: list[str]) -> list[str]:
-    """Signals cancel on every running per-IP scan workflow matching any of ips.
-
-    Chunks the visibility query at CANCEL_BATCH_SIZE ips per call, since an
-    unbounded IN(...) clause doesn't scale. Returns the cancelled workflow ids.
-    """
+async def start_terminate_batch(query: str) -> None:
+    """Force-terminates, via batch operation, everything currently matching query."""
     client = get_temporal_client()
-    workflow_ids: list[str] = []
-    unique_ips = sorted(set(ips))
-    for i in range(0, len(unique_ips), CANCEL_BATCH_SIZE):
-        chunk = unique_ips[i : i + CANCEL_BATCH_SIZE]
-        chunk_ids = [
-            wf.id
-            async for wf in client.list_workflows(running_scans_by_ips_query(project_id, chunk))
-        ]
-        await asyncio.gather(*(client.get_workflow_handle(wid).cancel() for wid in chunk_ids))
-        workflow_ids.extend(chunk_ids)
-    return workflow_ids
-
-
-async def terminate_if_still_running(workflow_id: str) -> None:
-    """Terminates workflow_id only if it is still RUNNING; a no-op otherwise."""
-    handle = get_temporal_client().get_workflow_handle(workflow_id)
-    description = await handle.describe()
-    if description.status is WorkflowExecutionStatus.RUNNING:
-        await handle.terminate()
+    await client.workflow_service.start_batch_operation(
+        StartBatchOperationRequest(
+            namespace=client.namespace,
+            visibility_query=query,
+            job_id=str(uuid4()),
+            reason="scan cancel grace period expired",
+            termination_operation=BatchOperationTermination(),
+        )
+    )
 
 
 @dataclass(slots=True)

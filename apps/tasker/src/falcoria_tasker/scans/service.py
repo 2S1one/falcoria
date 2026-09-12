@@ -4,7 +4,9 @@ import asyncio
 import logging
 import random
 import time
+from collections.abc import Coroutine
 from dataclasses import dataclass, field
+from typing import Any
 from uuid import UUID, uuid4
 
 from temporalio.service import RPCError
@@ -12,18 +14,21 @@ from temporalio.service import RPCError
 from falcoria_contracts.enums import ImportMode, ScannerFormat
 from falcoria_contracts.scan_io import ScanTask
 from falcoria_tasker.config import get_app_settings
-from falcoria_tasker.constants import CANCEL_TERMINATE_WAIT, SCAN_BATCH_CHUNK_SIZE
+from falcoria_tasker.constants import (
+    CANCEL_BATCH_SIZE,
+    CANCEL_TERMINATE_WAIT,
+    SCAN_BATCH_CHUNK_SIZE,
+)
 from falcoria_tasker.scanledger import ScanledgerClient, get_scanledger_client
 from falcoria_tasker.scans.resolve import resolve_targets
 from falcoria_tasker.scans.scanner_args import build_open_ports_args, build_service_args
 from falcoria_tasker.scans.schemas import (
-    CancelScanRequest,
-    CancelScanResponse,
     NotScannedDetails,
     RunningTarget,
     RunScanRequest,
     RunScanResponse,
     ScanListResponse,
+    ScanState,
     ScanStatusResponse,
     ScanSummary,
     SkippedCounts,
@@ -31,6 +36,11 @@ from falcoria_tasker.scans.schemas import (
 from falcoria_tasker.scans.sharding import shard_ports
 from falcoria_tasker.scans.targets import partition_targets, remove_duplicates
 from falcoria_tasker.temporal import workflows
+from falcoria_tasker.temporal.visibility import (
+    running_batch_by_scan_query,
+    running_batch_query,
+    running_scans_by_ips_query,
+)
 
 logger = logging.getLogger("falcoria_tasker")
 
@@ -50,8 +60,6 @@ class PreparedTargets:
     public_ip_hostnames: dict[str, list[str]]
     private_ip_sources: dict[str, list[str]]
     unresolvable_hosts: list[str]
-    pending_hostname_count: int
-    resolved_new_ip_count: int
 
 
 @dataclass(slots=True)
@@ -105,8 +113,6 @@ async def _prepare_targets(request: RunScanRequest, semaphore_limit: int) -> Pre
         ),
         private_ip_sources=_merge_sources(partition.private_ips, resolved.private_ips),
         unresolvable_hosts=resolved.unresolvable,
-        pending_hostname_count=len(partition.pending_hostnames),
-        resolved_new_ip_count=len(resolved.public_ips) + len(resolved.private_ips),
     )
 
 
@@ -177,13 +183,14 @@ def _build_summary(
     request: RunScanRequest, prepared: PreparedTargets, dedup: InsertModeDedup, started: int
 ) -> ScanSummary:
     """Assembles the accounting summary from provided hosts down to started targets."""
-    resolved_hostname_count = prepared.pending_hostname_count - len(prepared.unresolvable_hosts)
-    hostnames_collapsed_to_ip = max(0, resolved_hostname_count - prepared.resolved_new_ip_count)
+    attached_hostnames = len(
+        {hostname for hostnames in prepared.public_ip_hostnames.values() for hostname in hostnames}
+    )
     return ScanSummary(
         provided=len(request.hosts),
         duplicates_removed=len(request.hosts) - len(prepared.deduped),
-        resolved_ips=len(prepared.public_ip_hostnames),
-        hostnames_collapsed_to_ip=hostnames_collapsed_to_ip,
+        target_ips=len(prepared.public_ip_hostnames),
+        attached_hostnames=attached_hostnames,
         skipped=SkippedCounts(
             private_ip=len(prepared.private_ip_sources),
             unresolvable=len(prepared.unresolvable_hosts),
@@ -250,12 +257,13 @@ async def list_running_scans(project_id: UUID) -> ScanListResponse:
 
 
 async def get_scan_status(project_id: UUID, scan_id: str) -> ScanStatusResponse | None:
-    """Returns scan_id's task-completion counts and running targets.
+    """Returns scan_id's task-completion counts, overall state, and running targets.
 
     Returns None if no batch workflow was ever started for scan_id.
     """
+    settings = get_app_settings()
     progress, targets = await asyncio.gather(
-        workflows.scan_progress(project_id, scan_id),
+        workflows.scan_progress(project_id, scan_id, settings.scan_progress_semaphore_limit),
         workflows.running_ips(project_id, scan_id),
     )
     if progress is None:
@@ -264,41 +272,66 @@ async def get_scan_status(project_id: UUID, scan_id: str) -> ScanStatusResponse 
         total=progress.total,
         completed=progress.completed,
         failed=progress.failed,
+        state=ScanState(progress.state.value),
         running_targets=[RunningTarget(ip=ip, worker=worker) for ip, worker in targets],
     )
 
 
-async def _terminate_after_grace_period(workflow_ids: list[str]) -> None:
-    """Force-terminates any of workflow_ids still running after the cancel grace period."""
-    await asyncio.sleep(CANCEL_TERMINATE_WAIT.total_seconds())
-    for workflow_id in workflow_ids:
-        try:
-            await workflows.terminate_if_still_running(workflow_id)
-        except RPCError:
-            logger.exception("Failed to terminate workflow %s after cancel.", workflow_id)
+async def cancel_batches(project_id: UUID, scan_id: str | None) -> None:
+    """Signals a graceful cancel on every running batch workflow, optionally scoped to scan_id."""
+    query = (
+        running_batch_query(project_id)
+        if scan_id is None
+        else running_batch_by_scan_query(project_id, scan_id)
+    )
+    await workflows.start_cancel_batch(query)
+    _run_in_background(_terminate_after_grace_period([query]))
 
 
-def _schedule_terminate_if_running(workflow_ids: list[str]) -> None:
-    """Fires the terminate-after-grace-period task, keeping a reference alive."""
-    task = asyncio.create_task(_terminate_after_grace_period(workflow_ids))
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+async def cancel_by_ips(project_id: UUID, ips: list[str]) -> None:
+    """Signals a graceful cancel on every running per-IP scan workflow matching ips.
 
-
-async def cancel_scan(project_id: UUID, request: CancelScanRequest) -> CancelScanResponse:
-    """Signals a graceful cancel, then force-terminates anything still running after a grace period.
-
-    scan_id cancels that scan's batch workflows; ips cancels the matching
-    per-IP scan workflows directly (finer-grained than a whole batch); neither
-    cancels every running scan in the project.
+    Always schedules the terminate-after-grace-period follow-up for every
+    chunk, even if one chunk's cancel call failed - a chunk whose cancel
+    never went out is still worth force-terminating once the grace period
+    expires. Any cancel failure is still raised, for HTTP visibility.
     """
-    if request.scan_id:
-        workflow_ids = await workflows.cancel_running_batches(project_id, request.scan_id)
-    elif request.ips:
-        workflow_ids = await workflows.cancel_running_scans_by_ips(project_id, request.ips)
-    else:
-        workflow_ids = await workflows.cancel_running_batches(project_id, None)
+    unique_ips = sorted(set(ips))
+    queries = [
+        running_scans_by_ips_query(project_id, unique_ips[i : i + CANCEL_BATCH_SIZE])
+        for i in range(0, len(unique_ips), CANCEL_BATCH_SIZE)
+    ]
+    results = await asyncio.gather(
+        *(workflows.start_cancel_batch(q) for q in queries), return_exceptions=True
+    )
+    _run_in_background(_terminate_after_grace_period(queries))
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result
 
-    if workflow_ids:
-        _schedule_terminate_if_running(workflow_ids)
-    return CancelScanResponse()
+
+async def _terminate_after_grace_period(queries: list[str]) -> None:
+    """Force-terminates, via batch operation, whatever still matches queries after the grace period."""
+    await asyncio.sleep(CANCEL_TERMINATE_WAIT.total_seconds())
+    for query in queries:
+        try:
+            await workflows.start_terminate_batch(query)
+        except RPCError:
+            logger.exception("Failed to start terminate batch operation for query: %s", query)
+
+
+def _log_background_task_failure(task: asyncio.Task[None]) -> None:
+    """Logs a background task's exception; a no-op on success or cancellation."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error("Background task failed.", exc_info=exc)
+
+
+def _run_in_background(coro: Coroutine[Any, Any, None]) -> None:
+    """Fires coro as a background task, keeping a reference alive until it completes."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_log_background_task_failure)
+    task.add_done_callback(_background_tasks.discard)

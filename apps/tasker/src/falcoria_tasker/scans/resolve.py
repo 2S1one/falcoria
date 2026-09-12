@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 import aiodns
 
+from falcoria_tasker.concurrency import bounded_gather
 from falcoria_tasker.dns import get_dns_resolver
 from falcoria_tasker.scans.targets import is_public_ip
 
@@ -54,7 +55,6 @@ async def resolve_targets(
     retries is a normal scan outcome, not an error - it's returned, not raised.
     """
     result = ResolvedHostnames()
-    semaphore = asyncio.Semaphore(semaphore_limit)
 
     def add_ip(bucket: dict[str, list[str]], ip: str, source: str) -> None:
         sources = bucket.setdefault(ip, [])
@@ -62,23 +62,22 @@ async def resolve_targets(
             sources.append(source)
 
     async def resolve_one(hostname: str) -> None:
-        async with semaphore:
-            for attempt in range(retries):
-                try:
-                    ips = await asyncio.wait_for(
-                        _resolve_hostname(hostname, single_resolve), timeout=timeout_seconds
-                    )
-                except TimeoutError:
-                    ips = []
-                if ips:
-                    for ip in ips:
-                        bucket = result.public_ips if is_public_ip(ip) else result.private_ips
-                        add_ip(bucket, ip, hostname)
-                    return
-                if attempt < retries - 1:
-                    await asyncio.sleep(retry_delay_seconds)
-            logger.warning("Giving up on hostname %s after %d retries.", hostname, retries)
-            result.unresolvable.append(hostname)
+        for attempt in range(retries):
+            try:
+                ips = await asyncio.wait_for(
+                    _resolve_hostname(hostname, single_resolve), timeout=timeout_seconds
+                )
+            except TimeoutError:
+                ips = []
+            if ips:
+                for ip in ips:
+                    bucket = result.public_ips if is_public_ip(ip) else result.private_ips
+                    add_ip(bucket, ip, hostname)
+                return
+            if attempt < retries - 1:
+                await asyncio.sleep(retry_delay_seconds)
+        logger.warning("Giving up on hostname %s after %d retries.", hostname, retries)
+        result.unresolvable.append(hostname)
 
-    await asyncio.gather(*(resolve_one(hostname) for hostname in hostnames))
+    await bounded_gather((resolve_one(hostname) for hostname in hostnames), semaphore_limit)
     return result

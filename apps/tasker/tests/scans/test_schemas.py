@@ -3,7 +3,7 @@ from pydantic import ValidationError
 
 from falcoria_contracts.enums import ImportMode, PortProtocol
 from falcoria_tasker.scans.schemas import (
-    CancelScanRequest,
+    CancelByIpsRequest,
     OpenPortsOpts,
     RunScanRequest,
     ScanSummary,
@@ -81,21 +81,20 @@ def test_run_scan_request_rejects_malformed_host() -> None:
         _request(hosts=["not a host!"])
 
 
-def test_cancel_scan_request_normalizes_and_dedupes_nothing_but_validates_ips() -> None:
-    request = CancelScanRequest(ips=["10.0.0.1", "10.0.0.2"])
+def test_cancel_by_ips_request_validates_ips() -> None:
+    request = CancelByIpsRequest(ips=["10.0.0.1", "10.0.0.2"])
 
     assert request.ips == ["10.0.0.1", "10.0.0.2"]
 
 
-def test_cancel_scan_request_rejects_invalid_ip() -> None:
+def test_cancel_by_ips_request_rejects_invalid_ip() -> None:
     with pytest.raises(ValidationError, match="Invalid IP address"):
-        CancelScanRequest(ips=["not-an-ip"])
+        CancelByIpsRequest(ips=["not-an-ip"])
 
 
-def test_cancel_scan_request_empty_ips_becomes_none() -> None:
-    request = CancelScanRequest(ips=[])
-
-    assert request.ips is None
+def test_cancel_by_ips_request_rejects_empty_list() -> None:
+    with pytest.raises(ValidationError):
+        CancelByIpsRequest(ips=[])
 
 
 def test_skipped_counts_total_sums_all_reasons() -> None:
@@ -110,7 +109,7 @@ def test_scan_summary_accepts_consistent_counts() -> None:
     summary = ScanSummary(
         provided=10,
         duplicates_removed=1,
-        resolved_ips=8,
+        target_ips=8,
         skipped=SkippedCounts(already_known=2),
         started=6,
     )
@@ -123,7 +122,7 @@ def test_scan_summary_rejects_inconsistent_counts() -> None:
         ScanSummary(
             provided=10,
             duplicates_removed=1,
-            resolved_ips=8,
+            target_ips=8,
             skipped=SkippedCounts(already_known=2),
             started=99,
         )
