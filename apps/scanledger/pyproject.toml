@@ -5,6 +5,7 @@ description = "Falcoria system of record for port-scan results."
 requires-python = ">=3.12"
 dependencies = [
     "falcoria-contracts",
+    "falcoria-logging",
     "fastapi",
     "sqlmodel",
     "asyncpg",

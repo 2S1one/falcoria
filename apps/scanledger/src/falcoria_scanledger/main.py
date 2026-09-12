@@ -3,6 +3,7 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+from falcoria_logging import configure_logging
 from fastapi import Depends, FastAPI
 
 from falcoria_scanledger.auth.dependencies import require_admin, require_user
@@ -41,6 +42,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 def create_app() -> FastAPI:
     """Builds the scanledger FastAPI application."""
     settings = get_app_settings()
+    configure_logging(level=settings.log_level, json_output=settings.env is not Env.LOCAL)
     hide_docs = settings.env is Env.PROD
     app = FastAPI(
         title="scanledger",

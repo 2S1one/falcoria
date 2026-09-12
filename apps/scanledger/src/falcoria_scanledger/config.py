@@ -38,6 +38,8 @@ class AppSettings(BaseAppSettings):
             ``SCANLEDGER_WORKER_TOKEN``. Must differ from the other seed tokens.
         max_report_bytes: reject a scan-report upload larger than this. Env
             ``SCANLEDGER_MAX_REPORT_BYTES``. Default 25 MiB.
+        log_level: root logger level (``DEBUG``/``INFO``/``WARNING``/...). Env
+            ``SCANLEDGER_LOG_LEVEL``.
     """
 
     env: Env = Env.LOCAL
@@ -47,6 +49,7 @@ class AppSettings(BaseAppSettings):
     tasker_token: SecretStr
     worker_token: SecretStr
     max_report_bytes: int = 25 * 1024 * 1024
+    log_level: str = "INFO"
 
 
 @lru_cache

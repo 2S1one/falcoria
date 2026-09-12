@@ -47,6 +47,8 @@ class AppSettings(BaseAppSettings):
         worker_poller_stale_seconds: how long since a poller's last activity
             before it's dropped from the fleet view. Env
             ``TASKER_WORKER_POLLER_STALE_SECONDS``.
+        log_level: root logger level (``DEBUG``/``INFO``/``WARNING``/...). Env
+            ``TASKER_LOG_LEVEL``.
     """
 
     env: Env = Env.LOCAL
@@ -58,6 +60,7 @@ class AppSettings(BaseAppSettings):
     scan_progress_semaphore_limit: int = 50
     scan_progress_query_timeout_seconds: float = 2.0
     worker_poller_stale_seconds: int = 90
+    log_level: str = "INFO"
 
 
 @lru_cache

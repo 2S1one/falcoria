@@ -42,7 +42,7 @@ from falcoria_tasker.temporal.visibility import (
     running_scans_by_ips_query,
 )
 
-logger = logging.getLogger("falcoria_tasker")
+logger = logging.getLogger(__name__)
 
 _SCANNER = ScannerFormat.NMAP  # the only scanner implemented so far
 

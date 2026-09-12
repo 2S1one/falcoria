@@ -39,7 +39,7 @@ from falcoria_tasker.temporal.visibility import (
     running_scans_query,
 )
 
-logger = logging.getLogger("falcoria_tasker")
+logger = logging.getLogger(__name__)
 
 
 async def start_batch_workflows(

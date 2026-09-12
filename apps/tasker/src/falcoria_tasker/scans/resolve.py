@@ -10,7 +10,7 @@ from falcoria_tasker.concurrency import bounded_gather
 from falcoria_tasker.dns import get_dns_resolver
 from falcoria_tasker.scans.targets import is_public_ip
 
-logger = logging.getLogger("falcoria_tasker")
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)

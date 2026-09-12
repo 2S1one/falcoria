@@ -6,18 +6,19 @@ import os
 import socket
 
 import httpx
+from falcoria_logging import configure_logging
 from temporalio.worker import Worker
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
 
 from falcoria_contracts.temporal_names import PORT_SCANNER_TASK_QUEUE
 from falcoria_contracts.worker_identity import build_worker_identity
-from falcoria_worker.config import get_app_settings
+from falcoria_worker.config import Env, get_app_settings
 from falcoria_worker.scanledger import ScanledgerClient
 from falcoria_worker.temporal.activities import ScanActivities
 from falcoria_worker.temporal.client import connect_temporal
 from falcoria_worker.temporal.workflows import ScanBatchWorkflow, ScanWorkflow
 
-logger = logging.getLogger("falcoria_worker")
+logger = logging.getLogger(__name__)
 
 _EXTERNAL_IP_URL = "https://api.ipify.org"
 _EXTERNAL_IP_TIMEOUT_SECONDS = 5.0
@@ -38,6 +39,7 @@ async def _resolve_external_ip() -> str:
 async def main() -> None:
     """Connects to Temporal and scanledger, then polls PORT_SCANNER_TASK_QUEUE until stopped."""
     settings = get_app_settings()
+    configure_logging(level=settings.log_level, json_output=settings.env is not Env.LOCAL)
     external_ip = await _resolve_external_ip()
     identity = build_worker_identity(os.getpid(), socket.gethostname(), external_ip)
     client = await connect_temporal(identity)

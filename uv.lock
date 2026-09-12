@@ -10,6 +10,7 @@ resolution-markers = [
 members = [
     "falcoria-contracts",
     "falcoria-http",
+    "falcoria-logging",
     "falcoria-scanledger",
     "falcoria-tasker",
     "falcoria-temporal",
@@ -267,6 +268,11 @@ dependencies = [
 requires-dist = [{ name = "httpx" }]
 
 [[package]]
+name = "falcoria-logging"
+version = "0.1.0"
+source = { editable = "packages/falcoria-logging" }
+
+[[package]]
 name = "falcoria-scanledger"
 version = "0.1.0"
 source = { editable = "apps/scanledger" }
@@ -275,6 +281,7 @@ dependencies = [
     { name = "asyncpg" },
     { name = "defusedxml" },
     { name = "falcoria-contracts" },
+    { name = "falcoria-logging" },
     { name = "fastapi" },
     { name = "pydantic-settings" },
     { name = "python-multipart" },
@@ -287,6 +294,7 @@ requires-dist = [
     { name = "asyncpg" },
     { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "falcoria-contracts", editable = "packages/falcoria-contracts" },
+    { name = "falcoria-logging", editable = "packages/falcoria-logging" },
     { name = "fastapi" },
     { name = "pydantic-settings" },
     { name = "python-multipart", specifier = ">=0.0.32" },
@@ -301,6 +309,7 @@ dependencies = [
     { name = "aiodns" },
     { name = "falcoria-contracts" },
     { name = "falcoria-http" },
+    { name = "falcoria-logging" },
     { name = "falcoria-temporal" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -313,6 +322,7 @@ requires-dist = [
     { name = "aiodns" },
     { name = "falcoria-contracts", editable = "packages/falcoria-contracts" },
     { name = "falcoria-http", editable = "packages/falcoria-http" },
+    { name = "falcoria-logging", editable = "packages/falcoria-logging" },
     { name = "falcoria-temporal", editable = "packages/falcoria-temporal" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -343,6 +353,7 @@ dependencies = [
     { name = "defusedxml" },
     { name = "falcoria-contracts" },
     { name = "falcoria-http" },
+    { name = "falcoria-logging" },
     { name = "falcoria-temporal" },
     { name = "httpx" },
     { name = "pydantic-settings" },
@@ -354,6 +365,7 @@ requires-dist = [
     { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "falcoria-contracts", editable = "packages/falcoria-contracts" },
     { name = "falcoria-http", editable = "packages/falcoria-http" },
+    { name = "falcoria-logging", editable = "packages/falcoria-logging" },
     { name = "falcoria-temporal", editable = "packages/falcoria-temporal" },
     { name = "httpx" },
     { name = "pydantic-settings" },

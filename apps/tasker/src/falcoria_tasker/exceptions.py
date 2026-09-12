@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 from falcoria_tasker.config import Env, get_app_settings
 
-logger = logging.getLogger("falcoria_tasker")
+logger = logging.getLogger(__name__)
 
 
 class DetailedHTTPException(HTTPException):

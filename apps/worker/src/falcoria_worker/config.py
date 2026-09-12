@@ -43,6 +43,8 @@ class AppSettings(BaseAppSettings):
             activities. Env ``WORKER_MAX_CONCURRENT_ACTIVITIES``.
         window_size: max concurrent child ScanWorkflows inside ScanBatchWorkflow.
             Env ``WORKER_WINDOW_SIZE``.
+        log_level: root logger level (``DEBUG``/``INFO``/``WARNING``/...). Env
+            ``WORKER_LOG_LEVEL``.
     """
 
     env: Env = Env.LOCAL
@@ -54,6 +56,7 @@ class AppSettings(BaseAppSettings):
     heartbeat_interval_seconds: float = 10.0
     max_concurrent_activities: int = 1
     window_size: int = 20
+    log_level: str = "INFO"
 
 
 @lru_cache
