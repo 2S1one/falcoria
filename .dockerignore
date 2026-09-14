@@ -14,3 +14,11 @@ __pycache__/
 .DS_Store
 .git/
 refactor/
+
+# Documentation & repo metadata (never copied to runtime)
+docs/
+**/*.md
+.github/
+.gitignore
+compose*.yaml
+scripts/

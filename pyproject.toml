@@ -14,6 +14,7 @@ falcoria-logging = { workspace = true }
 
 [dependency-groups]
 dev = [
+    "commitizen>=4",
     "ruff>=0.14,<0.15",
     "pyright>=1.1.400",
     "pytest>=8",
@@ -98,3 +99,33 @@ markers = [
     "postgres: requires a real Postgres instance (docker compose up -d postgres)",
     "temporal: requires a real Temporal cluster (docker compose up -d temporal)",
 ]
+
+# ---------------------------------------------------------------------------
+# Commitizen — unified lockstep versioning across workspace members.
+# ---------------------------------------------------------------------------
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_provider = "commitizen"
+version = "0.1.0"
+tag_format = "v$version"
+version_scheme = "semver2"
+update_changelog_on_bump = true
+major_version_zero = true
+changelog_file = "CHANGELOG.md"
+bump_message = "chore(release): v$current_version -> v$new_version"
+
+version_files = [
+    "packages/falcoria-contracts/pyproject.toml:version",
+    "packages/falcoria-http/pyproject.toml:version",
+    "packages/falcoria-logging/pyproject.toml:version",
+    "packages/falcoria-temporal/pyproject.toml:version",
+    "apps/scanledger/pyproject.toml:version",
+    "apps/tasker/pyproject.toml:version",
+    "apps/worker/pyproject.toml:version",
+]
+
+pre_bump_hooks = [
+    "uv lock",
+    "git add uv.lock",
+]
+

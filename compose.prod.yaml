@@ -1,0 +1,185 @@
+name: falcoria-prod
+
+# Shared database connection block for scanledger services
+x-scanledger-db: &scanledger-db
+  SCANLEDGER_DB_HOST: postgres
+  SCANLEDGER_DB_PORT: 5432
+  SCANLEDGER_DB_USER: scanledger
+  SCANLEDGER_DB_PASSWORD: ${POSTGRES_PASSWORD}
+  SCANLEDGER_DB_NAME: scanledger
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: scanledger
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: scanledger
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+    networks:
+      - falcoria-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scanledger -d scanledger"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  temporal:
+    image: temporalio/auto-setup:1.29.1
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_USER: scanledger
+      POSTGRES_PWD: ${POSTGRES_PASSWORD}
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CLI_ADDRESS: temporal:7233
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig:ro
+    ports:
+      # Loopback only: allows host-networked worker on the same host to connect
+      - "127.0.0.1:7233:7233"
+    networks:
+      - falcoria-internal
+
+  temporal-init:
+    image: temporalio/admin-tools:1.29.1-tctl-1.18.4-cli-1.5.0
+    restart: "no"
+    depends_on:
+      - temporal
+    networks:
+      - falcoria-internal
+    volumes:
+      - ./scripts/init-temporal.sh:/init-temporal.sh:ro
+    entrypoint: ["/bin/sh", "/init-temporal.sh"]
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      TEMPORAL_RETENTION: 24h
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    restart: unless-stopped
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    ports:
+      # Loopback only: access securely via SSH tunnel (ssh -L 8080:localhost:8080)
+      - "127.0.0.1:8080:8080"
+    networks:
+      - falcoria-internal
+
+  scanledger-migrate:
+    image: ${SCANLEDGER_IMAGE:-falcoria-scanledger:latest}
+    build:
+      context: .
+      dockerfile: apps/scanledger/Dockerfile
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - falcoria-internal
+    environment:
+      <<: *scanledger-db
+    command: ["alembic", "-c", "apps/scanledger/alembic.ini", "upgrade", "head"]
+
+  scanledger:
+    image: ${SCANLEDGER_IMAGE:-falcoria-scanledger:latest}
+    build:
+      context: .
+      dockerfile: apps/scanledger/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      scanledger-migrate:
+        condition: service_completed_successfully
+    ports:
+      # Loopback only: allows host-networked worker on the same host to upload reports
+      - "127.0.0.1:8001:8000"
+    networks:
+      - falcoria-internal
+    environment:
+      <<: *scanledger-db
+      SCANLEDGER_ENV: prod
+      SCANLEDGER_LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SCANLEDGER_ADMIN_TOKEN: ${SCANLEDGER_ADMIN_TOKEN}
+      SCANLEDGER_TASKER_TOKEN: ${SCANLEDGER_TASKER_TOKEN}
+      SCANLEDGER_WORKER_TOKEN: ${SCANLEDGER_WORKER_TOKEN}
+      WEB_CONCURRENCY: ${SCANLEDGER_WORKERS:-4}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  tasker:
+    image: ${TASKER_IMAGE:-falcoria-tasker:latest}
+    build:
+      context: .
+      dockerfile: apps/tasker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      temporal-init:
+        condition: service_completed_successfully
+      scanledger:
+        condition: service_healthy
+    ports:
+      # Main public API port
+      - "${TASKER_PORT:-8000}:8000"
+    networks:
+      - falcoria-internal
+    environment:
+      TASKER_ENV: prod
+      TASKER_LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TASKER_SCANLEDGER_BASE_URL: http://scanledger:8000/api
+      TASKER_SCANLEDGER_TOKEN: ${SCANLEDGER_TASKER_TOKEN}
+      TASKER_TEMPORAL_ADDRESS: temporal:7233
+      TASKER_TEMPORAL_NAMESPACE: default
+      WEB_CONCURRENCY: ${TASKER_WORKERS:-4}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  worker:
+    image: ${WORKER_IMAGE:-falcoria-worker:latest}
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    depends_on:
+      temporal-init:
+        condition: service_completed_successfully
+      scanledger:
+        condition: service_healthy
+    environment:
+      WORKER_ENV: prod
+      WORKER_LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      WORKER_SCANLEDGER_BASE_URL: http://127.0.0.1:8001/api
+      WORKER_SCANLEDGER_TOKEN: ${SCANLEDGER_WORKER_TOKEN}
+      WORKER_TEMPORAL_ADDRESS: 127.0.0.1:7233
+      WORKER_TEMPORAL_NAMESPACE: default
+      WORKER_MAX_CONCURRENT_ACTIVITIES: ${WORKER_MAX_CONCURRENT_ACTIVITIES:-1}
+      WORKER_WINDOW_SIZE: ${WORKER_WINDOW_SIZE:-20}
+
+volumes:
+  pgdata_prod:
+
+networks:
+  falcoria-internal:
+    driver: bridge

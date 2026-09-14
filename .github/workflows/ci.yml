@@ -3,11 +3,22 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   lint-and-typecheck:
@@ -32,11 +43,12 @@ jobs:
       - run: uv sync --locked
       - run: uv run pytest -m "not postgres and not temporal"
 
-  docker-build:
+  docker-build-check:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         app: [scanledger, tasker, worker]
     steps:
       - uses: actions/checkout@v7
-      - run: docker build -f apps/${{ matrix.app }}/Dockerfile .
+      - name: Verify Dockerfile builds cleanly
+        run: docker build -f apps/${{ matrix.app }}/Dockerfile .
