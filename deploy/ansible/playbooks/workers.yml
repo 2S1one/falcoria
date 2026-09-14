@@ -1,0 +1,9 @@
+---
+- name: Deploy Falcoria Workers
+  hosts: workers
+  become: true
+  roles:
+    - common
+    - docker
+    - firewall
+    - worker

@@ -1,0 +1,14 @@
+name: falcoria-worker
+
+services:
+  worker:
+    image: {{ falcoria_image_registry }}/falcoria-worker:{{ falcoria_image_tag }}
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    env_file:
+      - .env
+    volumes:
+      - ./certs:/etc/falcoria/certs:ro

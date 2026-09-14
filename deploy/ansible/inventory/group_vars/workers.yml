@@ -1,0 +1,23 @@
+---
+# Worker nodes configuration
+
+# Connection endpoints to the Control Plane (via Caddy reverse proxy with TLS)
+# Note: httpx and gRPC automatically derive the HTTP Host / :authority header and TLS SNI
+# from the hostname in these URLs.
+worker_temporal_address: "temporal.{{ falcoria_domain }}:443"
+worker_temporal_tls_enabled: true
+worker_scanledger_base_url: "https://ledger.{{ falcoria_domain }}/api"
+
+# Worker runtime paths on remote host
+worker_dir: "{{ falcoria_base_dir }}/worker"
+worker_certs_dir: "{{ worker_dir }}/certs"
+
+# Certificate paths on the worker host (mounted into worker container)
+worker_client_cert_path: "{{ worker_certs_dir }}/worker.crt"
+worker_client_key_path: "{{ worker_certs_dir }}/worker.key"
+worker_server_ca_path: "{{ worker_certs_dir }}/ca.crt"
+
+# Scanner execution tuning
+worker_max_concurrent_activities: 1
+worker_window_size: 20
+worker_log_level: "INFO"

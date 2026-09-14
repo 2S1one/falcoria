@@ -1,0 +1,45 @@
+---
+- name: Update apt cache and install essential packages
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    pkg:
+      - curl
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - htop
+      - jq
+      - ufw
+
+- name: Set system timezone
+  community.general.timezone:
+    name: "{{ timezone | default('UTC') }}"
+
+- name: Apply sysctl tuning for network scanning and connections
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: true
+  loop:
+    - { name: 'fs.file-max', value: '2097152' }
+    - { name: 'net.core.somaxconn', value: '4096' }
+    - { name: 'net.ipv4.ip_local_port_range', value: '1024 65535' }
+
+- name: Set security limits for file descriptors
+  ansible.builtin.copy:
+    dest: /etc/security/limits.d/falcoria.conf
+    mode: '0644'
+    content: |
+      * soft nofile 65536
+      * hard nofile 65536
+      root soft nofile 65536
+      root hard nofile 65536
+
+- name: Populate /etc/hosts with Control Plane subdomains if control_plane_ip is specified
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "{{ control_plane_ip }} {{ falcoria_domain }} api.{{ falcoria_domain }} ledger.{{ falcoria_domain }} temporal.{{ falcoria_domain }} temporal-ui.{{ falcoria_domain }}"
+    state: present
+  when: control_plane_ip is defined and control_plane_ip | length > 0

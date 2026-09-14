@@ -1,0 +1,46 @@
+---
+- name: Create worker directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0750'
+  loop:
+    - "{{ worker_dir }}"
+    - "{{ worker_certs_dir }}"
+
+- name: Deploy Root CA certificate to worker
+  ansible.builtin.copy:
+    src: /tmp/falcoria-pki/ca.crt
+    dest: "{{ worker_server_ca_path }}"
+    mode: '0644'
+
+- name: Deploy worker client certificate
+  ansible.builtin.copy:
+    src: "/tmp/falcoria-pki/{{ inventory_hostname }}/worker.crt"
+    dest: "{{ worker_client_cert_path }}"
+    mode: '0644'
+
+- name: Deploy worker client private key
+  ansible.builtin.copy:
+    src: "/tmp/falcoria-pki/{{ inventory_hostname }}/worker.key"
+    dest: "{{ worker_client_key_path }}"
+    mode: '0600'
+  no_log: true
+
+- name: Template worker docker-compose.yaml
+  ansible.builtin.template:
+    src: docker-compose.worker.yaml.j2
+    dest: "{{ worker_dir }}/docker-compose.yaml"
+    mode: '0640'
+
+- name: Template worker .env file
+  ansible.builtin.template:
+    src: worker.env.j2
+    dest: "{{ worker_dir }}/.env"
+    mode: '0600'
+  no_log: true
+
+- name: Start worker container with Docker Compose
+  ansible.builtin.command: docker compose up -d --remove-orphans
+  args:
+    chdir: "{{ worker_dir }}"

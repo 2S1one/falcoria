@@ -1,0 +1,27 @@
+---
+# Control Plane host configuration
+
+# Subdomains routed by Caddy reverse proxy
+tasker_domain: "api.{{ falcoria_domain }}"
+scanledger_domain: "ledger.{{ falcoria_domain }}"
+temporal_ui_domain: "temporal-ui.{{ falcoria_domain }}"
+temporal_grpc_domain: "temporal.{{ falcoria_domain }}"
+
+# Directory for docker-compose and runtime files on the host
+control_plane_dir: "{{ falcoria_base_dir }}/control_plane"
+control_plane_certs_dir: "{{ control_plane_dir }}/certs"
+
+# PostgreSQL and Temporal defaults
+postgres_user: "scanledger"
+postgres_db: "scanledger"
+temporal_namespace: "default"
+temporal_retention: "24h"
+
+# Internal communication within Docker bridge (Tasker -> Scanledger & Temporal)
+# Tasker communicates directly inside the Docker network without going through Caddy
+tasker_internal_scanledger_url: "http://scanledger:8000/api"
+tasker_internal_temporal_address: "temporal:7233"
+
+# Uvicorn concurrency for FastAPI services
+scanledger_workers: 4
+tasker_workers: 4

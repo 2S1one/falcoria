@@ -1,0 +1,6 @@
+---
+- name: Deploy Control Plane
+  ansible.builtin.import_playbook: control_plane.yml
+
+- name: Deploy Workers
+  ansible.builtin.import_playbook: workers.yml
