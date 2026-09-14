@@ -17,10 +17,11 @@ class ScanledgerClient:
         base_url: str,
         service_token: str,
         transport: httpx.AsyncBaseTransport | None = None,
+        verify: bool = True,
     ) -> None:
         self._client = httpx.AsyncClient(
             base_url=base_url,
-            transport=transport if transport is not None else RetryingTransport(),
+            transport=transport if transport is not None else RetryingTransport(verify=verify),
         )
         self._service_token = service_token
 
