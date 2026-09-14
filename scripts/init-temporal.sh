@@ -27,13 +27,13 @@ until tctl --address "${ADDRESS}" --namespace "${NAMESPACE}" namespace describe 
 done
 
 echo "Ensuring custom search attributes exist..."
-# Retry until cluster cache accepts custom search attributes (idempotent: exits 0 once added)
-until tctl --auto_confirm --address "${ADDRESS}" admin cluster add-search-attributes \
-    -n ProjectId -t Keyword \
-    -n ScanId -t Keyword \
-    -n Mode -t Keyword \
-    -n Ip -t Keyword >/dev/null 2>&1; do
-    echo "Waiting for search attributes to be registered in cluster..."
+until tctl --address "${ADDRESS}" admin cluster get-search-attributes 2>/dev/null | grep -q "ProjectId"; do
+    echo "Registering custom search attributes in cluster..."
+    tctl --auto_confirm --address "${ADDRESS}" admin cluster add-search-attributes \
+        -n ProjectId -t Keyword \
+        -n ScanId -t Keyword \
+        -n Mode -t Keyword \
+        -n Ip -t Keyword >/dev/null 2>&1 || true
     sleep 2
 done
 
