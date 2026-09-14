@@ -1,8 +1,8 @@
 # AGENTS.md
 
 Single source of truth for agents working in this repo. `CLAUDE.md` imports this file.
-Nested `AGENTS.md` files (one per workspace member) add area-specific rules — the file
-nearest the edited file wins.
+Nested `AGENTS.md` files (one per workspace member, and `deploy/ansible/AGENTS.md`) add
+area-specific rules — the file nearest the edited file wins.
 
 ## Overview
 
@@ -41,12 +41,15 @@ apps/scanledger/               import falcoria_scanledger    FastAPI + SQLModel 
 apps/tasker/                   import falcoria_tasker         API server + Temporal (one instance)   [not created yet]
 apps/worker/                   import falcoria_worker         nmap job runner (N instances)          [not created yet]
 apps/falcli/                   import falcli                  console client                         [not created yet]
+deploy/ansible/                Ansible playbooks & roles     Multi-node Zero-Trust mTLS deployment
 ```
 
 - src-layout for every member: code lives in `<member>/src/<import_name>/`.
 - Dist names are hyphenated, `falcoria-` prefixed (`falcoria-scanledger`); import names are
   underscored, `falcoria_` prefixed (`falcoria_scanledger`). `falcli` keeps its bare name.
 - Cross-member deps go through `[tool.uv.sources] <name> = { workspace = true }`.
+- Deployment is automated in `deploy/ansible/`. All deployment operations must be
+  performed strictly following [`deploy/ansible/AGENTS.md`](deploy/ansible/AGENTS.md).
 
 ## Code style
 

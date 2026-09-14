@@ -1,0 +1,29 @@
+---
+- name: Check if Docker is already installed
+  ansible.builtin.command: docker --version
+  register: docker_check
+  changed_when: false
+  failed_when: false
+
+- name: Download official Docker installation script
+  ansible.builtin.get_url:
+    url: https://get.docker.com
+    dest: /tmp/get-docker.sh
+    mode: '0700'
+  when: docker_check.rc != 0
+
+- name: Execute official Docker installation script
+  ansible.builtin.command: sh /tmp/get-docker.sh
+  when: docker_check.rc != 0
+
+- name: Remove temporary installation script
+  ansible.builtin.file:
+    path: /tmp/get-docker.sh
+    state: absent
+  when: docker_check.rc != 0
+
+- name: Ensure Docker service is enabled and running
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+    state: started

@@ -1,0 +1,22 @@
+---
+# Global configuration across all Falcoria cluster hosts
+
+# Project domain & Let's Encrypt ACME settings
+falcoria_domain: "falcoria.example.com"
+acme_email: "admin@example.com"
+
+# Optional: If you don't have public DNS configured for your domain, set the Control Plane's IP here.
+# Ansible will automatically populate /etc/hosts on all worker nodes so they can resolve
+# ledger.{{ falcoria_domain }} and temporal.{{ falcoria_domain }}.
+# Leave empty ("") if you have real DNS records configured.
+control_plane_ip: ""
+
+# Container registry and image tags
+falcoria_image_registry: "ghcr.io/2s1one"
+falcoria_image_tag: "latest"
+
+# Remote host paths
+falcoria_base_dir: "/opt/falcoria"
+
+# System settings
+timezone: "UTC"

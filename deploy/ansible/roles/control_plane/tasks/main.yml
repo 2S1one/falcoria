@@ -1,0 +1,121 @@
+---
+- name: Create Control Plane directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0750'
+  loop:
+    - "{{ control_plane_dir }}"
+    - "{{ control_plane_certs_dir }}"
+    - "{{ control_plane_dir }}/scripts"
+    - "{{ control_plane_dir }}/dynamicconfig"
+
+# --- PKI / Root Certificate Authority ---
+- name: Generate Root CA private key
+  community.crypto.openssl_privatekey:
+    path: "{{ control_plane_certs_dir }}/ca.key"
+    size: 4096
+    mode: '0600'
+
+- name: Generate Root CA CSR
+  community.crypto.openssl_csr:
+    path: "{{ control_plane_certs_dir }}/ca.csr"
+    privatekey_path: "{{ control_plane_certs_dir }}/ca.key"
+    common_name: "Falcoria Root CA"
+    basic_constraints: ["CA:TRUE"]
+    basic_constraints_critical: true
+    key_usage: ["cRLSign", "keyCertSign"]
+    key_usage_critical: true
+
+- name: Generate Root CA self-signed certificate
+  community.crypto.x509_certificate:
+    path: "{{ control_plane_certs_dir }}/ca.crt"
+    privatekey_path: "{{ control_plane_certs_dir }}/ca.key"
+    csr_path: "{{ control_plane_certs_dir }}/ca.csr"
+    provider: selfsigned
+    selfsigned_not_after: "+3650d"
+    mode: '0644'
+
+- name: Fetch Root CA certificate for worker distribution
+  ansible.builtin.fetch:
+    src: "{{ control_plane_certs_dir }}/ca.crt"
+    dest: /tmp/falcoria-pki/ca.crt
+    flat: true
+
+# --- PKI / Worker Client Certificates ---
+- name: Generate worker private keys
+  community.crypto.openssl_privatekey:
+    path: "{{ control_plane_certs_dir }}/{{ item }}.key"
+    size: 2048
+    mode: '0600'
+  loop: "{{ groups['workers'] | default([]) }}"
+
+- name: Generate worker CSRs
+  community.crypto.openssl_csr:
+    path: "{{ control_plane_certs_dir }}/{{ item }}.csr"
+    privatekey_path: "{{ control_plane_certs_dir }}/{{ item }}.key"
+    common_name: "worker-{{ item }}"
+    extended_key_usage: ["clientAuth"]
+  loop: "{{ groups['workers'] | default([]) }}"
+
+- name: Sign worker certificates with Root CA
+  community.crypto.x509_certificate:
+    path: "{{ control_plane_certs_dir }}/{{ item }}.crt"
+    csr_path: "{{ control_plane_certs_dir }}/{{ item }}.csr"
+    ownca_path: "{{ control_plane_certs_dir }}/ca.crt"
+    ownca_privatekey_path: "{{ control_plane_certs_dir }}/ca.key"
+    provider: ownca
+    ownca_not_after: "+3650d"
+    mode: '0644'
+  loop: "{{ groups['workers'] | default([]) }}"
+
+- name: Fetch worker certificates for distribution
+  ansible.builtin.fetch:
+    src: "{{ control_plane_certs_dir }}/{{ item }}.crt"
+    dest: "/tmp/falcoria-pki/{{ item }}/worker.crt"
+    flat: true
+  loop: "{{ groups['workers'] | default([]) }}"
+
+- name: Fetch worker keys for distribution
+  ansible.builtin.fetch:
+    src: "{{ control_plane_certs_dir }}/{{ item }}.key"
+    dest: "/tmp/falcoria-pki/{{ item }}/worker.key"
+    flat: true
+  loop: "{{ groups['workers'] | default([]) }}"
+
+# --- Configuration & Scripts ---
+- name: Copy dynamicconfig files
+  ansible.builtin.copy:
+    src: development-sql.yaml
+    dest: "{{ control_plane_dir }}/dynamicconfig/development-sql.yaml"
+    mode: '0644'
+
+- name: Copy init-temporal.sh script
+  ansible.builtin.copy:
+    src: init-temporal.sh
+    dest: "{{ control_plane_dir }}/scripts/init-temporal.sh"
+    mode: '0755'
+
+- name: Template Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ control_plane_dir }}/Caddyfile"
+    mode: '0644'
+
+- name: Template docker-compose.yaml
+  ansible.builtin.template:
+    src: docker-compose.control-plane.yaml.j2
+    dest: "{{ control_plane_dir }}/docker-compose.yaml"
+    mode: '0640'
+
+- name: Template .env file with secrets
+  ansible.builtin.template:
+    src: control-plane.env.j2
+    dest: "{{ control_plane_dir }}/.env"
+    mode: '0600'
+  no_log: true
+
+- name: Start Control Plane stack with Docker Compose
+  ansible.builtin.command: docker compose up -d --remove-orphans
+  args:
+    chdir: "{{ control_plane_dir }}"

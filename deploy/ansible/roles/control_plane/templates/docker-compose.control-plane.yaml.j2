@@ -1,0 +1,154 @@
+name: falcoria-control-plane
+
+x-scanledger-db: &scanledger-db
+  SCANLEDGER_DB_HOST: postgres
+  SCANLEDGER_DB_PORT: 5432
+  SCANLEDGER_DB_USER: {{ postgres_user }}
+  SCANLEDGER_DB_PASSWORD: ${POSTGRES_PASSWORD}
+  SCANLEDGER_DB_NAME: {{ postgres_db }}
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/etc/caddy/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - falcoria-internal
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: {{ postgres_user }}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: {{ postgres_db }}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - falcoria-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ postgres_user }} -d {{ postgres_db }}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  temporal:
+    image: temporalio/auto-setup:1.29.1
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_USER: {{ postgres_user }}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD}
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CLI_ADDRESS: temporal:7233
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig:ro
+    networks:
+      - falcoria-internal
+
+  temporal-init:
+    image: temporalio/admin-tools:1.29.1-tctl-1.18.4-cli-1.5.0
+    restart: "no"
+    depends_on:
+      - temporal
+    networks:
+      - falcoria-internal
+    volumes:
+      - ./scripts/init-temporal.sh:/init-temporal.sh:ro
+    entrypoint: ["/bin/sh", "/init-temporal.sh"]
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: {{ temporal_namespace }}
+      TEMPORAL_RETENTION: {{ temporal_retention }}
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    restart: unless-stopped
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    networks:
+      - falcoria-internal
+
+  scanledger-migrate:
+    image: {{ falcoria_image_registry }}/falcoria-scanledger:{{ falcoria_image_tag }}
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - falcoria-internal
+    environment:
+      <<: *scanledger-db
+    command: ["alembic", "-c", "apps/scanledger/alembic.ini", "upgrade", "head"]
+
+  scanledger:
+    image: {{ falcoria_image_registry }}/falcoria-scanledger:{{ falcoria_image_tag }}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      scanledger-migrate:
+        condition: service_completed_successfully
+    networks:
+      - falcoria-internal
+    environment:
+      <<: *scanledger-db
+      SCANLEDGER_ENV: prod
+      SCANLEDGER_LOG_LEVEL: INFO
+      SCANLEDGER_ADMIN_TOKEN: ${SCANLEDGER_ADMIN_TOKEN}
+      SCANLEDGER_TASKER_TOKEN: ${SCANLEDGER_TASKER_TOKEN}
+      SCANLEDGER_WORKER_TOKEN: ${SCANLEDGER_WORKER_TOKEN}
+      WEB_CONCURRENCY: {{ scanledger_workers }}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  tasker:
+    image: {{ falcoria_image_registry }}/falcoria-tasker:{{ falcoria_image_tag }}
+    restart: unless-stopped
+    depends_on:
+      temporal-init:
+        condition: service_completed_successfully
+      scanledger:
+        condition: service_healthy
+    networks:
+      - falcoria-internal
+    environment:
+      TASKER_ENV: prod
+      TASKER_LOG_LEVEL: INFO
+      TASKER_SCANLEDGER_BASE_URL: {{ tasker_internal_scanledger_url }}
+      TASKER_SCANLEDGER_TOKEN: ${SCANLEDGER_TASKER_TOKEN}
+      TASKER_TEMPORAL_ADDRESS: {{ tasker_internal_temporal_address }}
+      TASKER_TEMPORAL_NAMESPACE: {{ temporal_namespace }}
+      WEB_CONCURRENCY: {{ tasker_workers }}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
+
+networks:
+  falcoria-internal:
+    driver: bridge

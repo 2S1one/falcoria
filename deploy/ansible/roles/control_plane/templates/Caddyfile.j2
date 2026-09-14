@@ -1,0 +1,34 @@
+{
+    email {{ acme_email }}
+}
+
+# Tasker Public API
+{{ tasker_domain }} {
+    encode zstd gzip
+    reverse_proxy tasker:8000
+}
+
+# Scanledger API (worker uploads and admin)
+{{ scanledger_domain }} {
+    encode zstd gzip
+    reverse_proxy scanledger:8000
+}
+
+# Temporal Web UI (Protected with Basic Auth)
+{{ temporal_ui_domain }} {
+    basicauth {
+        {{ vault_temporal_ui_user }} {{ vault_temporal_ui_password_hash }}
+    }
+    reverse_proxy temporal-ui:8080
+}
+
+# Temporal gRPC Frontend (Protected with mTLS)
+{{ temporal_grpc_domain }} {
+    tls {
+        client_auth {
+            mode require_and_verify
+            trust_pool file /etc/caddy/certs/ca.crt
+        }
+    }
+    reverse_proxy h2c://temporal:7233
+}

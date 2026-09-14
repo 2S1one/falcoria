@@ -45,7 +45,9 @@ async def main() -> None:
     client = await connect_temporal(identity)
 
     scanledger = ScanledgerClient(
-        settings.scanledger_base_url, settings.scanledger_token.get_secret_value()
+        settings.scanledger_base_url,
+        settings.scanledger_token.get_secret_value(),
+        verify=settings.scanledger_tls_verify,
     )
     activities = ScanActivities(
         scanledger,

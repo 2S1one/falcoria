@@ -1,0 +1,16 @@
+---
+# Example secrets template for Ansible Vault
+# Copy to vault.yml and encrypt: ansible-vault encrypt inventory/group_vars/vault.yml
+
+# Database credentials
+vault_postgres_password: "replace_with_strong_pg_password"
+
+# Scanledger service tokens (seeded on startup, must all differ)
+vault_scanledger_admin_token: "replace_with_strong_admin_token"
+vault_scanledger_tasker_token: "replace_with_strong_tasker_token"
+vault_scanledger_worker_token: "replace_with_strong_worker_token"
+
+# Temporal Web UI credentials (for Caddy basicauth)
+vault_temporal_ui_user: "admin"
+# Password hash generated via: docker run --rm caddy:2 caddy hash-password --plaintext 'your_password'
+vault_temporal_ui_password_hash: "$2a$14$replace_with_caddy_bcrypt_hash"
