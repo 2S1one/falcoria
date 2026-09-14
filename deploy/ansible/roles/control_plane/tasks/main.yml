@@ -86,13 +86,13 @@
 # --- Configuration & Scripts ---
 - name: Copy dynamicconfig files
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../dynamicconfig/development-sql.yaml"
+    src: development-sql.yaml
     dest: "{{ control_plane_dir }}/dynamicconfig/development-sql.yaml"
     mode: '0644'
 
 - name: Copy init-temporal.sh script
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../scripts/init-temporal.sh"
+    src: init-temporal.sh
     dest: "{{ control_plane_dir }}/scripts/init-temporal.sh"
     mode: '0755'
 
@@ -110,7 +110,7 @@
 
 - name: Template .env file with secrets
   ansible.builtin.template:
-    src: .env.j2
+    src: control-plane.env.j2
     dest: "{{ control_plane_dir }}/.env"
     mode: '0600'
   no_log: true
