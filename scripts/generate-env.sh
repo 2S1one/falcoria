@@ -42,6 +42,7 @@ SCANLEDGER_WORKER_TOKEN=${WORKER_TOKEN}
 
 # Service ports and logging
 TASKER_PORT=8000
+TEMPORAL_UI_PORT=8082
 LOG_LEVEL=INFO
 
 # Application concurrency
@@ -51,6 +52,11 @@ TASKER_WORKERS=4
 # Worker execution tuning
 WORKER_MAX_CONCURRENT_ACTIVITIES=1
 WORKER_WINDOW_SIZE=20
+
+# Container image settings (using GHCR published images)
+SCANLEDGER_IMAGE=ghcr.io/2s1one/falcoria-scanledger:latest
+TASKER_IMAGE=ghcr.io/2s1one/falcoria-tasker:latest
+WORKER_IMAGE=ghcr.io/2s1one/falcoria-worker:latest
 EOF
 
 chmod 600 "${OUTPUT_FILE}"

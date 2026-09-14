@@ -21,12 +21,20 @@ else
     echo "Namespace '${NAMESPACE}' already exists."
 fi
 
+echo "Waiting for namespace '${NAMESPACE}' to be active in cluster..."
+until tctl --address "${ADDRESS}" --namespace "${NAMESPACE}" namespace describe >/dev/null 2>&1; do
+    sleep 1
+done
+
 echo "Ensuring custom search attributes exist..."
-# Idempotent: tctl exits 0 and no-ops if search attributes already exist.
-tctl --auto_confirm --address "${ADDRESS}" admin cluster add-search-attributes \
+# Retry until cluster cache accepts custom search attributes (idempotent: exits 0 once added)
+until tctl --auto_confirm --address "${ADDRESS}" admin cluster add-search-attributes \
     -n ProjectId -t Keyword \
     -n ScanId -t Keyword \
     -n Mode -t Keyword \
-    -n Ip -t Keyword
+    -n Ip -t Keyword >/dev/null 2>&1; do
+    echo "Waiting for search attributes to be registered in cluster..."
+    sleep 2
+done
 
 echo "Temporal initialization successfully completed."
