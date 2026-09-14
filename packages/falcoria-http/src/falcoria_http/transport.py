@@ -20,8 +20,9 @@ class RetryingTransport(httpx.AsyncBaseTransport):
         wrapped: httpx.AsyncBaseTransport | None = None,
         retries: int = _DEFAULT_RETRIES,
         backoff_base: float = _DEFAULT_BACKOFF_BASE,
+        verify: bool = True,
     ) -> None:
-        self._wrapped = wrapped if wrapped is not None else httpx.AsyncHTTPTransport()
+        self._wrapped = wrapped if wrapped is not None else httpx.AsyncHTTPTransport(verify=verify)
         self._retries = retries
         self._backoff_base = backoff_base
 

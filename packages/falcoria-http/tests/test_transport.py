@@ -1,3 +1,5 @@
+import ssl
+
 import httpx
 import pytest
 from falcoria_http.transport import RetryingTransport
@@ -77,3 +79,13 @@ async def test_aclose_delegates_to_wrapped() -> None:
     await transport.aclose()
 
     assert fake.closed
+
+
+def test_passes_verify_to_underlying_transport() -> None:
+    transport = RetryingTransport(verify=False)
+    assert isinstance(transport._wrapped, httpx.AsyncHTTPTransport)
+    pool = getattr(transport._wrapped, "_pool", None)
+    assert pool is not None
+    ssl_context = getattr(pool, "_ssl_context", None)
+    assert isinstance(ssl_context, ssl.SSLContext)
+    assert ssl_context.verify_mode == ssl.CERT_NONE
