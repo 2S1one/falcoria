@@ -7,9 +7,9 @@ area-specific rules — the file nearest the edited file wins.
 ## Overview
 
 **falcoria** is a network-scanning platform: a uv-workspace monorepo of a system-of-record
-service (`scanledger`), an API server + Temporal orchestrator (`tasker`), nmap job runners
-(`worker`), a console client (`falcli`), and a shared contracts package
-(`falcoria-contracts`).
+service (`scanledger`), an API server + Temporal client (`tasker`), nmap job runners
+(`worker`), a console client (`falcli`, not created yet), and four shared library packages
+(`falcoria-contracts`, `falcoria-http`, `falcoria-logging`, `falcoria-temporal`).
 
 It is being rebuilt from scratch, file-by-file along the data flow, `scanledger` first.
 
@@ -36,11 +36,14 @@ target that member, not the workspace.
 ## Project structure
 
 ```
-packages/falcoria-contracts/   import falcoria_contracts    pydantic + stdlib only; pyright strict
+packages/falcoria-contracts/   import falcoria_contracts     pydantic + stdlib only; pyright strict
+packages/falcoria-http/        import falcoria_http          httpx-based retrying transport for service calls
+packages/falcoria-logging/     import falcoria_logging       stdlib-only process-wide logging config
+packages/falcoria-temporal/    import falcoria_temporal      temporalio + falcoria-contracts; data converter, search attrs
 apps/scanledger/               import falcoria_scanledger    FastAPI + SQLModel + asyncpg + alembic
-apps/tasker/                   import falcoria_tasker         API server + Temporal (one instance)   [not created yet]
-apps/worker/                   import falcoria_worker         nmap job runner (N instances)          [not created yet]
-apps/falcli/                   import falcli                  console client                         [not created yet]
+apps/tasker/                   import falcoria_tasker        API server + Temporal (one instance)
+apps/worker/                   import falcoria_worker        nmap job runner (N instances)
+apps/falcli/                   import falcli                 console client                         [not created yet]
 deploy/ansible/                Ansible playbooks & roles     Multi-node Zero-Trust mTLS deployment
 ```
 
