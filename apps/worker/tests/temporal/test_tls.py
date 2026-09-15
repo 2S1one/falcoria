@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-from pydantic import SecretStr
 from temporalio.client import TLSConfig
 
 from falcoria_worker.config import TemporalTLSSettings
@@ -28,7 +27,7 @@ def test_builds_tls_config_with_mtls_and_ca(tmp_path: Path) -> None:
 
     settings = TemporalTLSSettings(
         client_cert_path=cert_file,
-        client_key_path=SecretStr(str(key_file)),
+        client_key_path=key_file,
         server_root_ca_cert_path=ca_file,
     )
     assert settings.enabled is True
@@ -49,7 +48,7 @@ def test_domain_override_respected(tmp_path: Path) -> None:
 
     settings = TemporalTLSSettings(
         client_cert_path=cert_file,
-        client_key_path=SecretStr(str(key_file)),
+        client_key_path=key_file,
         domain="custom.domain.internal",
     )
 
@@ -65,7 +64,7 @@ def test_raises_if_cert_file_missing(tmp_path: Path) -> None:
 
     settings = TemporalTLSSettings(
         client_cert_path=missing_cert,
-        client_key_path=SecretStr(str(key_file)),
+        client_key_path=key_file,
     )
 
     with pytest.raises(FileNotFoundError, match="Temporal client cert file not found"):
@@ -79,7 +78,7 @@ def test_raises_if_key_file_missing(tmp_path: Path) -> None:
 
     settings = TemporalTLSSettings(
         client_cert_path=cert_file,
-        client_key_path=SecretStr(str(missing_key)),
+        client_key_path=missing_key,
     )
 
     with pytest.raises(FileNotFoundError, match="Temporal client key file not found"):
@@ -102,4 +101,4 @@ def test_settings_validation_enforces_both_cert_and_key() -> None:
         TemporalTLSSettings(client_cert_path=Path("/some/cert.crt"))
 
     with pytest.raises(ValueError, match="Both client_cert_path and client_key_path"):
-        TemporalTLSSettings(client_key_path=SecretStr("/some/key.key"))
+        TemporalTLSSettings(client_key_path=Path("/some/key.key"))

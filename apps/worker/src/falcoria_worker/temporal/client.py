@@ -1,7 +1,5 @@
 """Temporal client connection, using the shared pinned pydantic data converter."""
 
-from pathlib import Path
-
 from falcoria_temporal.converter import pydantic_data_converter
 from temporalio.client import Client, TLSConfig
 
@@ -29,7 +27,7 @@ def _build_tls_config(address: str, tls_settings: TemporalTLSSettings) -> bool |
 
     if tls_settings.client_cert_path and tls_settings.client_key_path:
         cert_path = tls_settings.client_cert_path
-        key_path = Path(tls_settings.client_key_path.get_secret_value())
+        key_path = tls_settings.client_key_path
         if not cert_path.is_file():
             msg = f"Temporal client cert file not found: {cert_path}"
             raise FileNotFoundError(msg)
