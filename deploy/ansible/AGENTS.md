@@ -40,6 +40,23 @@ Collections required:
 - `community.general` (UFW firewall rules)
 - `ansible.posix` (sysctl parameter tuning)
 
+## Releasing images before a deploy
+
+Falcoria has a single production environment (no staging) — `falcoria_image_tag` in
+`inventory/group_vars/all.yml` is always pinned to a specific released version, never
+`latest`. `docker-publish.yml` only builds and pushes images on a `v*.*.*` git tag (or
+manual `workflow_dispatch`); merging to `main` alone does not publish anything.
+
+To cut a release before deploying:
+
+1. From repo root, `cz bump` — bumps every workspace member's `pyproject.toml` version in
+   lockstep, updates `CHANGELOG.md`, commits, and creates tag `vX.Y.Z`.
+2. `git push --follow-tags` (or push the branch and the tag separately) — the tag push
+   triggers `docker-publish.yml`, which builds and pushes
+   `ghcr.io/2s1one/falcoria-{scanledger,tasker,worker}:X.Y.Z` (plus `:latest`).
+3. Update `falcoria_image_tag: "X.Y.Z"` in `inventory/group_vars/all.yml` to match, then
+   run the playbooks below.
+
 ## Running Playbooks
 
 Always check syntax and run dry-runs before applying:
