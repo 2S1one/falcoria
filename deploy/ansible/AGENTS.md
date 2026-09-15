@@ -42,10 +42,12 @@ Collections required:
 
 ## Releasing images before a deploy
 
-Falcoria has a single production environment (no staging) — `falcoria_image_tag` in
-`inventory/group_vars/all.yml` is always pinned to a specific released version, never
-`latest`. `docker-publish.yml` only builds and pushes images on a `v*.*.*` git tag (or
-manual `workflow_dispatch`); merging to `main` alone does not publish anything.
+Falcoria has a single production environment (no staging) — `falcoria_image_digests` in
+`inventory/group_vars/all.yml` pins each image by content digest, not tag: a tag (even a
+version tag) can be repointed at different image bytes after publish, by mistake or by a
+compromised push credential ("tag confusion") — a digest can't be reassigned.
+`docker-publish.yml` only builds and pushes images on a `v*.*.*` git tag (or manual
+`workflow_dispatch`); merging to `main` alone does not publish anything.
 
 To cut a release before deploying:
 
@@ -53,9 +55,13 @@ To cut a release before deploying:
    lockstep, updates `CHANGELOG.md`, commits, and creates tag `vX.Y.Z`.
 2. `git push --follow-tags` (or push the branch and the tag separately) — the tag push
    triggers `docker-publish.yml`, which builds and pushes
-   `ghcr.io/2s1one/falcoria-{scanledger,tasker,worker}:X.Y.Z` (plus `:latest`).
-3. Update `falcoria_image_tag: "X.Y.Z"` in `inventory/group_vars/all.yml` to match, then
-   run the playbooks below.
+   `ghcr.io/2s1one/falcoria-{scanledger,tasker,worker}:X.Y.Z` (plus `:latest`), then its
+   `update-deploy-pins` job automatically opens a `chore/pin-digests-vX.Y.Z` PR updating
+   `falcoria_image_digests`/`falcoria_image_version` in `all.yml` to match what was just
+   pushed — sourced from the build step's own digest output, not from inspecting the tag
+   afterward.
+3. Review and merge that PR — the last human checkpoint before the pinned config changes —
+   then run the playbooks below.
 
 ## Running Playbooks
 

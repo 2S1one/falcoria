@@ -16,14 +16,23 @@ acme_email: "admin@example.com"
 # Leave empty ("") if you have real DNS records configured.
 control_plane_ip: ""
 
-# Container registry and image tags.
-# Pin to a released version tag (matches the git tag without the "v", e.g. a
-# "v0.1.0" release -> "0.1.0") rather than "latest": re-running the playbook
-# later for an unrelated config change must not silently pull a newer image
-# than what was actually tested. Bump with `cz bump`, which pushes the git
-# tag and triggers docker-publish.yml to build and push it.
+# Container registry and pinned image digests.
+# Pinned by content digest, not tag: a tag (even a version tag) can be
+# repointed at different image bytes after publish, by mistake or by a
+# compromised push credential ("tag confusion") — a digest can't be
+# reassigned. falcoria_image_version is a human-readable label only, not
+# used in any image: line.
+#
+# Both are updated automatically: docker-publish.yml builds and pushes on
+# every vX.Y.Z tag, then opens a PR here with the new digests and version —
+# review and merge that PR, then run the playbooks below. See "Releasing
+# images before a deploy" in AGENTS.md.
 falcoria_image_registry: "ghcr.io/2s1one"
-falcoria_image_tag: "0.1.0"
+falcoria_image_version: "0.1.0"
+falcoria_image_digests:
+  scanledger: "sha256:f374eb49c17a2481ffc49a75e30dbedf4fa975ff481078f00fc0f37569bdb9c3"
+  tasker: "sha256:8a07b02f3f541ad7f1f4b105690effb5864f8c2ec57c59cc94548b1108bf87fd"
+  worker: "sha256:a813b0e65d7c2064faf3fcccbaddc38ad4c3437aadba576dccba2bc4199b94fe"
 
 # Remote host paths
 falcoria_base_dir: "/opt/falcoria"

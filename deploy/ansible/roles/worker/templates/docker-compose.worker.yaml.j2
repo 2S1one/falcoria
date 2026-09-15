@@ -2,7 +2,7 @@ name: falcoria-worker
 
 services:
   worker:
-    image: {{ falcoria_image_registry }}/falcoria-worker:{{ falcoria_image_tag }}
+    image: {{ falcoria_image_registry }}/falcoria-worker@{{ falcoria_image_digests.worker }}
     restart: unless-stopped
     network_mode: host
     cap_add:
