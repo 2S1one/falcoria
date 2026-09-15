@@ -16,9 +16,14 @@ acme_email: "admin@example.com"
 # Leave empty ("") if you have real DNS records configured.
 control_plane_ip: ""
 
-# Container registry and image tags
+# Container registry and image tags.
+# Pin to a released version tag (matches the git tag without the "v", e.g. a
+# "v0.1.0" release -> "0.1.0") rather than "latest": re-running the playbook
+# later for an unrelated config change must not silently pull a newer image
+# than what was actually tested. Bump with `cz bump`, which pushes the git
+# tag and triggers docker-publish.yml to build and push it.
 falcoria_image_registry: "ghcr.io/2s1one"
-falcoria_image_tag: "latest"
+falcoria_image_tag: "0.1.0"
 
 # Remote host paths
 falcoria_base_dir: "/opt/falcoria"
