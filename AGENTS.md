@@ -8,8 +8,8 @@ area-specific rules — the file nearest the edited file wins.
 
 **falcoria** is a network-scanning platform: a uv-workspace monorepo of a system-of-record
 service (`scanledger`), an API server + Temporal client (`tasker`), nmap job runners
-(`worker`), a console client (`falcli`, not created yet), and four shared library packages
-(`falcoria-contracts`, `falcoria-http`, `falcoria-logging`, `falcoria-temporal`).
+(`worker`), and four shared library packages (`falcoria-contracts`, `falcoria-http`,
+`falcoria-logging`, `falcoria-temporal`).
 
 It is being rebuilt from scratch, file-by-file along the data flow, `scanledger` first.
 
@@ -43,13 +43,12 @@ packages/falcoria-temporal/    import falcoria_temporal      temporalio + falcor
 apps/scanledger/               import falcoria_scanledger    FastAPI + SQLModel + asyncpg + alembic
 apps/tasker/                   import falcoria_tasker        API server + Temporal (one instance)
 apps/worker/                   import falcoria_worker        nmap job runner (N instances)
-apps/falcli/                   import falcli                 console client                         [not created yet]
 deploy/ansible/                Ansible playbooks & roles     Multi-node Zero-Trust mTLS deployment
 ```
 
 - src-layout for every member: code lives in `<member>/src/<import_name>/`.
 - Dist names are hyphenated, `falcoria-` prefixed (`falcoria-scanledger`); import names are
-  underscored, `falcoria_` prefixed (`falcoria_scanledger`). `falcli` keeps its bare name.
+  underscored, `falcoria_` prefixed (`falcoria_scanledger`).
 - Cross-member deps go through `[tool.uv.sources] <name> = { workspace = true }`.
 - Deployment is automated in `deploy/ansible/`. All deployment operations must be
   performed strictly following [`deploy/ansible/AGENTS.md`](deploy/ansible/AGENTS.md).
