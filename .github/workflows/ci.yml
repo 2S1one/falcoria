@@ -45,22 +45,23 @@ jobs:
 
   ansible-lint:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: deploy/ansible
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - run: pip install ansible-lint
-      - run: ansible-galaxy collection install -r requirements.yml
       # vault.yml is gitignored (real secrets, vault-encrypted by the operator);
-      # the example file has the same keys with placeholder values, enough to
-      # let a syntax check resolve the vars_files reference in CI.
+      # the example file has the same keys with placeholder values, enough for
+      # ansible-lint's own per-playbook syntax check to resolve the vars_files
+      # reference in CI.
       - run: cp inventory/group_vars/vault.example.yml inventory/group_vars/vault.yml
-      - run: ansible-lint
-      - run: ansible-playbook --syntax-check playbooks/site.yml
+        working-directory: deploy/ansible
+      - name: Cache Ansible collections
+        uses: actions/cache@v6
+        with:
+          path: ~/.ansible/collections
+          key: ansible-collections-${{ hashFiles('deploy/ansible/requirements.yml') }}
+      - uses: ansible/ansible-lint@v26.8.0
+        with:
+          working_directory: deploy/ansible
+          requirements_file: requirements.yml
 
   docker-build-check:
     runs-on: ubuntu-latest
