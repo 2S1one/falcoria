@@ -154,7 +154,10 @@ def _build_tasks(to_scan: dict[str, list[str]], request: RunScanRequest) -> list
     """Builds one ScanTask per (IP, port-shard), shuffled for load spread."""
     service_args = (
         build_service_args(
-            request.service_opts, _SCANNER, request.open_ports_opts.transport_protocol
+            request.service_opts,
+            _SCANNER,
+            request.open_ports_opts.transport_protocol,
+            request.open_ports_opts.scan_type,
         )
         if request.include_services
         else None
