@@ -16,6 +16,23 @@ worker_certs_dir: "{{ worker_dir }}/certs"
 worker_client_cert_path: "{{ worker_certs_dir }}/worker.crt"
 worker_client_key_path: "{{ worker_certs_dir }}/worker.key"
 worker_server_ca_path: "{{ worker_certs_dir }}/ca.crt"
+worker_caddy_root_ca_path: "{{ worker_certs_dir }}/caddy-root.crt"
+worker_caddy_root_ca_container_path: "/etc/falcoria/certs/caddy-root.crt"
+worker_ca_bundle_dir: "{{ worker_certs_dir }}/ca-bundle.d"
+worker_combined_ca_path: "{{ worker_certs_dir }}/combined-ca.crt"
+worker_combined_ca_container_path: "/etc/falcoria/certs/combined-ca.crt"
+
+# Used by temporalio's TLSConfig.server_root_ca_cert to validate Temporal's server
+# certificate specifically — a single-purpose trust anchor, so it stays pointed at
+# the plain Caddy CA rather than the combined bundle below.
+worker_temporal_tls_server_root_ca_cert_path: >-
+  {{ worker_caddy_root_ca_container_path if falcoria_tls_mode == "internal" else "" }}
+
+# SSL_CERT_FILE overrides trust for every outbound HTTPS call the worker process
+# makes (including its own public external-IP lookup), so it needs both the
+# public root CAs and the private Caddy CA — the combined bundle, not just Caddy's.
+worker_ssl_cert_file: >-
+  {{ worker_combined_ca_container_path if falcoria_tls_mode == "internal" else "" }}
 
 # Scanner execution tuning
 worker_max_concurrent_activities: 1

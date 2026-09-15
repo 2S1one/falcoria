@@ -10,6 +10,7 @@ temporal_grpc_domain: "temporal.{{ falcoria_domain }}"
 # Directory for docker-compose and runtime files on the host
 control_plane_dir: "{{ falcoria_base_dir }}/control_plane"
 control_plane_certs_dir: "{{ control_plane_dir }}/certs"
+control_plane_caddy_data_dir: "{{ control_plane_dir }}/caddy-data"
 
 # PostgreSQL and Temporal defaults
 postgres_user: "scanledger"

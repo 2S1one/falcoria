@@ -1,6 +1,11 @@
 ---
 # Global configuration across all Falcoria cluster hosts
 
+# TLS mode:
+# - public: use public ACME certificates for real DNS names.
+# - internal: use Caddy's internal CA for private names resolved via /etc/hosts.
+falcoria_tls_mode: "public"
+
 # Project domain & Let's Encrypt ACME settings
 falcoria_domain: "falcoria.example.com"
 acme_email: "admin@example.com"

@@ -2,6 +2,8 @@
 - name: Deploy Falcoria Workers
   hosts: workers
   become: true
+  vars_files:
+    - ../inventory/group_vars/vault.yml
   roles:
     - common
     - docker

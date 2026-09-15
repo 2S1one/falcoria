@@ -99,7 +99,8 @@ class TemporalTLSSettings(BaseAppSettings):
         client_cert_path: path to the client certificate (PEM) for mTLS. Env
             ``WORKER_TEMPORAL_TLS_CLIENT_CERT_PATH``.
         client_key_path: path to the client private key (PEM) for mTLS. Env
-            ``WORKER_TEMPORAL_TLS_CLIENT_KEY_PATH``.
+            ``WORKER_TEMPORAL_TLS_CLIENT_KEY_PATH``. Not read as ``SecretStr``: the
+            path itself isn't sensitive, only the file it points to.
         server_root_ca_cert_path: path to the root CA certificate (PEM) that signed
             the server certificate. Env
             ``WORKER_TEMPORAL_TLS_SERVER_ROOT_CA_CERT_PATH``.
@@ -111,7 +112,7 @@ class TemporalTLSSettings(BaseAppSettings):
 
     enabled: bool = False
     client_cert_path: Path | None = None
-    client_key_path: SecretStr | None = None
+    client_key_path: Path | None = None
     server_root_ca_cert_path: Path | None = None
     domain: str | None = None
 
@@ -122,7 +123,14 @@ class TemporalTLSSettings(BaseAppSettings):
         if has_cert != has_key:
             msg = "Both client_cert_path and client_key_path must be provided for mTLS."
             raise ValueError(msg)
-        if (has_cert and has_key) or self.server_root_ca_cert_path is not None:
+        has_tls_material = has_cert or self.server_root_ca_cert_path is not None
+        if has_tls_material and "enabled" in self.model_fields_set and not self.enabled:
+            msg = (
+                "WORKER_TEMPORAL_TLS_ENABLED=false but a client cert/key or root CA "
+                "path is also set; remove them or drop the explicit disable."
+            )
+            raise ValueError(msg)
+        if has_tls_material:
             self.enabled = True
         return self
 

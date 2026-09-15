@@ -1,10 +1,11 @@
 ---
-- name: Create worker directories
+- name: Create worker runtime directories
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
-    mode: '0750'
+    mode: '0755'
   loop:
+    - "{{ falcoria_base_dir }}"
     - "{{ worker_dir }}"
     - "{{ worker_certs_dir }}"
 
@@ -13,12 +14,58 @@
     src: /tmp/falcoria-pki/ca.crt
     dest: "{{ worker_server_ca_path }}"
     mode: '0644'
+  when: not ansible_check_mode
+
+- name: Deploy Caddy internal root CA to worker
+  ansible.builtin.copy:
+    src: /tmp/falcoria-pki/caddy-root.crt
+    dest: "{{ worker_caddy_root_ca_path }}"
+    mode: '0644'
+  when: falcoria_tls_mode == "internal" and not ansible_check_mode
+
+# --- Combined CA bundle for SSL_CERT_FILE ---
+# The worker process still needs public root CAs even in internal TLS mode: it
+# resolves its own external IP via a public HTTPS lookup on startup (accuracy
+# matters there — the address must be the real scan egress IP, not whatever
+# Ansible's inventory happens to say). Pointing SSL_CERT_FILE at the Caddy CA
+# alone (as before) satisfied Caddy but broke that public lookup. Fragments are
+# assembled (not shell-concatenated) per this role's idempotence rule.
+- name: Create CA bundle fragment directory
+  ansible.builtin.file:
+    path: "{{ worker_ca_bundle_dir }}"
+    state: directory
+    mode: '0755'
+  when: falcoria_tls_mode == "internal" and not ansible_check_mode
+
+- name: Copy system CA bundle into CA bundle fragments
+  ansible.builtin.copy:
+    src: /etc/ssl/certs/ca-certificates.crt
+    dest: "{{ worker_ca_bundle_dir }}/00-system-ca.crt"
+    mode: '0644'
+    remote_src: true
+  when: falcoria_tls_mode == "internal" and not ansible_check_mode
+
+- name: Copy Caddy internal root CA into CA bundle fragments
+  ansible.builtin.copy:
+    src: "{{ worker_caddy_root_ca_path }}"
+    dest: "{{ worker_ca_bundle_dir }}/20-caddy-root.crt"
+    mode: '0644'
+    remote_src: true
+  when: falcoria_tls_mode == "internal" and not ansible_check_mode
+
+- name: Assemble combined CA bundle
+  ansible.builtin.assemble:
+    src: "{{ worker_ca_bundle_dir }}"
+    dest: "{{ worker_combined_ca_path }}"
+    mode: '0644'
+  when: falcoria_tls_mode == "internal" and not ansible_check_mode
 
 - name: Deploy worker client certificate
   ansible.builtin.copy:
     src: "/tmp/falcoria-pki/{{ inventory_hostname }}/worker.crt"
     dest: "{{ worker_client_cert_path }}"
     mode: '0644'
+  when: not ansible_check_mode
 
 - name: Deploy worker client private key
   ansible.builtin.copy:
@@ -26,12 +73,14 @@
     dest: "{{ worker_client_key_path }}"
     mode: '0600'
   no_log: true
+  when: not ansible_check_mode
 
 - name: Template worker docker-compose.yaml
   ansible.builtin.template:
     src: docker-compose.worker.yaml.j2
     dest: "{{ worker_dir }}/docker-compose.yaml"
     mode: '0640'
+  when: not ansible_check_mode
 
 - name: Template worker .env file
   ansible.builtin.template:
@@ -39,8 +88,11 @@
     dest: "{{ worker_dir }}/.env"
     mode: '0600'
   no_log: true
+  when: not ansible_check_mode
 
 - name: Start worker container with Docker Compose
   ansible.builtin.command: docker compose up -d --remove-orphans
   args:
     chdir: "{{ worker_dir }}"
+  when: not ansible_check_mode
+  changed_when: true

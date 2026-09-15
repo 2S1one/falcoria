@@ -1,21 +1,32 @@
+{% if falcoria_tls_mode == "public" %}
 {
     email {{ acme_email }}
 }
+{% endif %}
 
 # Tasker Public API
 {{ tasker_domain }} {
+{% if falcoria_tls_mode == "internal" %}
+    tls internal
+{% endif %}
     encode zstd gzip
     reverse_proxy tasker:8000
 }
 
 # Scanledger API (worker uploads and admin)
 {{ scanledger_domain }} {
+{% if falcoria_tls_mode == "internal" %}
+    tls internal
+{% endif %}
     encode zstd gzip
     reverse_proxy scanledger:8000
 }
 
 # Temporal Web UI (Protected with Basic Auth)
 {{ temporal_ui_domain }} {
+{% if falcoria_tls_mode == "internal" %}
+    tls internal
+{% endif %}
     basicauth {
         {{ vault_temporal_ui_user }} {{ vault_temporal_ui_password_hash }}
     }
@@ -25,6 +36,9 @@
 # Temporal gRPC Frontend (Protected with mTLS)
 {{ temporal_grpc_domain }} {
     tls {
+{% if falcoria_tls_mode == "internal" %}
+        issuer internal
+{% endif %}
         client_auth {
             mode require_and_verify
             trust_pool file /etc/caddy/certs/ca.crt

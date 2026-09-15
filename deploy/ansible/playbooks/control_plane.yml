@@ -2,6 +2,8 @@
 - name: Deploy Falcoria Control Plane
   hosts: control_plane
   become: true
+  vars_files:
+    - ../inventory/group_vars/vault.yml
   roles:
     - common
     - docker

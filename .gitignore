@@ -19,6 +19,14 @@ __pycache__/
 !.env.example
 !.env.prod.example
 
+# Local deployment inventory, secrets and downloaded Ansible collections.
+deploy/ansible/inventory/hosts.ini
+deploy/ansible/inventory/group_vars/falcoria.yml
+deploy/ansible/inventory/group_vars/vault.yml
+deploy/ansible/.vault-pass
+deploy/ansible/.temporal-ui-password
+deploy/ansible/collections/
+
 # Editor / OS
 .idea/
 .vscode/
