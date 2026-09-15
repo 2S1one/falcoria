@@ -65,6 +65,8 @@ enforce:
 - Catch specific exceptions; no bare `except Exception` outside a top-level handler;
   `logger.exception()` inside an `except`; keep `try` blocks small.
 - Text I/O always `encoding="utf-8"`.
+- Logging: `falcoria_logging.configure_logging` once at process entry, never
+  `logging.basicConfig()`. Loggers via `logging.getLogger(__name__)`.
 - Don't silence a checker (`# noqa` / `# type: ignore` / `# pragma: no cover`) to get the
   gate green — fix the cause. A suppression is allowed only when genuinely unavoidable, and
   only with a specific rule code plus a one-line reason.
