@@ -122,7 +122,10 @@ private names, `tests/` and `migrations/` are exempt. What the tool cannot check
 - `uv add`, never `pip`. `encoding="utf-8"` on file I/O.
 
 **⚠️ ask first**
-- Adding a dependency.
+- Adding a dependency. A new `packages/*` member, or a change to which packages an
+  `apps/*` member depends on, also needs the matching app's filter list in
+  `.github/workflows/ci.yml` (`changes` job) updated — otherwise `docker-build-check`
+  stops rebuilding that app's image on a real change.
 - Changing a `falcoria-contracts` type — it is imported by every service, so a change here
   is a contract change.
 - A DB schema or Alembic migration change.

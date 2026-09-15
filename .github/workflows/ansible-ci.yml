@@ -1,0 +1,40 @@
+name: Ansible CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/ansible/**'
+      - '.github/workflows/ansible-ci.yml'
+  pull_request:
+    paths:
+      - 'deploy/ansible/**'
+      - '.github/workflows/ansible-ci.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ansible-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # vault.yml is gitignored (real secrets, vault-encrypted by the operator);
+      # the example file has the same keys with placeholder values, enough for
+      # ansible-lint's own per-playbook syntax check to resolve the vars_files
+      # reference in CI.
+      - run: cp inventory/group_vars/vault.example.yml inventory/group_vars/vault.yml
+        working-directory: deploy/ansible
+      - name: Cache Ansible collections
+        uses: actions/cache@v6
+        with:
+          path: ~/.ansible/collections
+          key: ansible-collections-${{ hashFiles('deploy/ansible/requirements.yml') }}
+      - uses: ansible/ansible-lint@v26.8.0
+        with:
+          working_directory: deploy/ansible
+          requirements_file: requirements.yml
