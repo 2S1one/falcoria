@@ -54,6 +54,14 @@ breaks if violated, the file it lives in.
   independently (not split/summed).** Changing this to a shared budget or unconditional
   second pass changes scan duration and load characteristics.
   `apps/worker/src/falcoria_worker/nmap/scanner.py`.
+- **`OpenPortsOpts.scan_type` (default `ScanType.SYN`) pins `-sS`/`-sT` explicitly for both
+  nmap passes instead of letting nmap pick based on ambient privilege.** This only works
+  because the worker's `nmap` binary has `cap_net_raw,cap_net_admin` file capabilities
+  (`setcap` in `apps/worker/Dockerfile`, not root). A container missing that capability now
+  fails the scan outright on a `SYN` request instead of silently falling back to a connect
+  scan with different timing/signature — the explicit pin trades silent degradation for a
+  loud failure. `apps/tasker/src/falcoria_tasker/scans/scanner_args.py`,
+  `apps/worker/Dockerfile`.
 
 ## Data layer (scanledger)
 
