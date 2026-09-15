@@ -97,7 +97,7 @@ services:
     command: ["alembic", "-c", "apps/scanledger/alembic.ini", "upgrade", "head"]
 
   scanledger-sync-port-prevalence:
-    image: {{ falcoria_image_registry }}/falcoria-scanledger:{{ falcoria_image_tag }}
+    image: {{ falcoria_image_registry }}/falcoria-scanledger@{{ falcoria_image_digests.scanledger }}
     restart: "no"
     depends_on:
       scanledger-migrate:
