@@ -1,14 +1,21 @@
 ---
-- name: Create Control Plane directories
+- name: Create Control Plane runtime directories
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
-    mode: '0750'
+    mode: '0755'
   loop:
+    - "{{ falcoria_base_dir }}"
     - "{{ control_plane_dir }}"
-    - "{{ control_plane_certs_dir }}"
+    - "{{ control_plane_caddy_data_dir }}"
     - "{{ control_plane_dir }}/scripts"
     - "{{ control_plane_dir }}/dynamicconfig"
+
+- name: Create Control Plane certificate directory
+  ansible.builtin.file:
+    path: "{{ control_plane_certs_dir }}"
+    state: directory
+    mode: '0755'
 
 # --- PKI / Root Certificate Authority ---
 - name: Generate Root CA private key
@@ -16,6 +23,7 @@
     path: "{{ control_plane_certs_dir }}/ca.key"
     size: 4096
     mode: '0600'
+  when: not ansible_check_mode
 
 - name: Generate Root CA CSR
   community.crypto.openssl_csr:
@@ -26,6 +34,7 @@
     basic_constraints_critical: true
     key_usage: ["cRLSign", "keyCertSign"]
     key_usage_critical: true
+  when: not ansible_check_mode
 
 - name: Generate Root CA self-signed certificate
   community.crypto.x509_certificate:
@@ -35,12 +44,14 @@
     provider: selfsigned
     selfsigned_not_after: "+3650d"
     mode: '0644'
+  when: not ansible_check_mode
 
 - name: Fetch Root CA certificate for worker distribution
   ansible.builtin.fetch:
     src: "{{ control_plane_certs_dir }}/ca.crt"
     dest: /tmp/falcoria-pki/ca.crt
     flat: true
+  when: not ansible_check_mode
 
 # --- PKI / Worker Client Certificates ---
 - name: Generate worker private keys
@@ -49,6 +60,7 @@
     size: 2048
     mode: '0600'
   loop: "{{ groups['workers'] | default([]) }}"
+  when: not ansible_check_mode
 
 - name: Generate worker CSRs
   community.crypto.openssl_csr:
@@ -57,6 +69,7 @@
     common_name: "worker-{{ item }}"
     extended_key_usage: ["clientAuth"]
   loop: "{{ groups['workers'] | default([]) }}"
+  when: not ansible_check_mode
 
 - name: Sign worker certificates with Root CA
   community.crypto.x509_certificate:
@@ -68,6 +81,7 @@
     ownca_not_after: "+3650d"
     mode: '0644'
   loop: "{{ groups['workers'] | default([]) }}"
+  when: not ansible_check_mode
 
 - name: Fetch worker certificates for distribution
   ansible.builtin.fetch:
@@ -75,6 +89,7 @@
     dest: "/tmp/falcoria-pki/{{ item }}/worker.crt"
     flat: true
   loop: "{{ groups['workers'] | default([]) }}"
+  when: not ansible_check_mode
 
 - name: Fetch worker keys for distribution
   ansible.builtin.fetch:
@@ -82,6 +97,7 @@
     dest: "/tmp/falcoria-pki/{{ item }}/worker.key"
     flat: true
   loop: "{{ groups['workers'] | default([]) }}"
+  when: not ansible_check_mode
 
 # --- Configuration & Scripts ---
 - name: Copy dynamicconfig files
@@ -89,24 +105,28 @@
     src: development-sql.yaml
     dest: "{{ control_plane_dir }}/dynamicconfig/development-sql.yaml"
     mode: '0644'
+  when: not ansible_check_mode
 
 - name: Copy init-temporal.sh script
   ansible.builtin.copy:
     src: init-temporal.sh
     dest: "{{ control_plane_dir }}/scripts/init-temporal.sh"
     mode: '0755'
+  when: not ansible_check_mode
 
 - name: Template Caddyfile
   ansible.builtin.template:
     src: Caddyfile.j2
     dest: "{{ control_plane_dir }}/Caddyfile"
     mode: '0644'
+  when: not ansible_check_mode
 
 - name: Template docker-compose.yaml
   ansible.builtin.template:
     src: docker-compose.control-plane.yaml.j2
     dest: "{{ control_plane_dir }}/docker-compose.yaml"
     mode: '0640'
+  when: not ansible_check_mode
 
 - name: Template .env file with secrets
   ansible.builtin.template:
@@ -114,8 +134,24 @@
     dest: "{{ control_plane_dir }}/.env"
     mode: '0600'
   no_log: true
+  when: not ansible_check_mode
 
 - name: Start Control Plane stack with Docker Compose
   ansible.builtin.command: docker compose up -d --remove-orphans
   args:
     chdir: "{{ control_plane_dir }}"
+  when: not ansible_check_mode
+
+- name: Wait for Caddy internal root CA
+  ansible.builtin.wait_for:
+    path: "{{ control_plane_caddy_data_dir }}/caddy/pki/authorities/local/root.crt"
+    state: present
+    timeout: 120
+  when: falcoria_tls_mode == "internal" and not ansible_check_mode
+
+- name: Fetch Caddy internal root CA for worker distribution
+  ansible.builtin.fetch:
+    src: "{{ control_plane_caddy_data_dir }}/caddy/pki/authorities/local/root.crt"
+    dest: /tmp/falcoria-pki/caddy-root.crt
+    flat: true
+  when: falcoria_tls_mode == "internal" and not ansible_check_mode
