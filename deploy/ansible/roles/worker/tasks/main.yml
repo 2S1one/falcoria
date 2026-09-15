@@ -95,3 +95,4 @@
   args:
     chdir: "{{ worker_dir }}"
   when: not ansible_check_mode
+  changed_when: true

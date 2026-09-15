@@ -141,6 +141,7 @@
   args:
     chdir: "{{ control_plane_dir }}"
   when: not ansible_check_mode
+  changed_when: true
 
 - name: Wait for Caddy internal root CA
   ansible.builtin.wait_for:
