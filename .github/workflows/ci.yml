@@ -3,15 +3,23 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.gitignore'
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.python-version'
+      - 'conftest.py'
+      - '.github/workflows/ci.yml'
   pull_request:
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.gitignore'
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.python-version'
+      - 'conftest.py'
+      - '.github/workflows/ci.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -43,11 +51,51 @@ jobs:
       - run: uv sync --locked
       - run: uv run pytest -m "not postgres and not temporal"
 
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docker_apps: ${{ steps.filter.outputs.changes }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          # Keep each app's list in sync with its apps/*/pyproject.toml
+          # dependencies on falcoria-*: an app only rebuilds when its own
+          # code, a package it actually depends on, or the lockfile/root
+          # manifest changes. Adding a dependency on a new shared package
+          # (or dropping one) means updating the matching list below too.
+          filters: |
+            scanledger:
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'packages/falcoria-contracts/**'
+              - 'packages/falcoria-logging/**'
+              - 'apps/scanledger/**'
+            tasker:
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'packages/falcoria-contracts/**'
+              - 'packages/falcoria-logging/**'
+              - 'packages/falcoria-temporal/**'
+              - 'packages/falcoria-http/**'
+              - 'apps/tasker/**'
+            worker:
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'packages/falcoria-contracts/**'
+              - 'packages/falcoria-logging/**'
+              - 'packages/falcoria-temporal/**'
+              - 'packages/falcoria-http/**'
+              - 'apps/worker/**'
+
   docker-build-check:
+    needs: changes
+    if: needs.changes.outputs.docker_apps != '[]'
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        app: [scanledger, tasker, worker]
+        app: ${{ fromJSON(needs.changes.outputs.docker_apps) }}
     steps:
       - uses: actions/checkout@v7
       - name: Verify Dockerfile builds cleanly

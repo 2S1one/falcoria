@@ -5,9 +5,11 @@ on:
     branches: [main]
     paths:
       - 'deploy/ansible/**'
+      - '.github/workflows/ansible-ci.yml'
   pull_request:
     paths:
       - 'deploy/ansible/**'
+      - '.github/workflows/ansible-ci.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
