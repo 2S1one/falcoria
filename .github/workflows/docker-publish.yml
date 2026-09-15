@@ -46,6 +46,7 @@ jobs:
             type=sha,prefix=sha-
 
       - name: Build and push Docker image
+        id: push
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -55,3 +56,66 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Record image digest
+        run: |
+          echo "${{ matrix.app }}: \`${{ steps.push.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo -n "${{ steps.push.outputs.digest }}" > "${{ matrix.app }}.digest"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.app }}
+          path: ${{ matrix.app }}.digest
+          retention-days: 7
+
+  update-deploy-pins:
+    needs: build-and-push
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+
+      - name: Pin digests in deploy config
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          file=deploy/ansible/inventory/group_vars/all.yml
+          sed -i \
+            -e "s|falcoria_image_version: \".*\"|falcoria_image_version: \"${version}\"|" \
+            -e "s|scanledger: \"sha256:.*\"|scanledger: \"$(cat digests/scanledger.digest)\"|" \
+            -e "s|tasker: \"sha256:.*\"|tasker: \"$(cat digests/tasker.digest)\"|" \
+            -e "s|worker: \"sha256:.*\"|worker: \"$(cat digests/worker.digest)\"|" \
+            "$file"
+
+      - name: Open pin-update PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          branch="chore/pin-digests-${GITHUB_REF_NAME}"
+          git checkout -b "$branch"
+          git add deploy/ansible/inventory/group_vars/all.yml
+          if git diff --cached --quiet; then
+            echo "Digests unchanged, nothing to open a PR for."
+            exit 0
+          fi
+          git commit -m "chore(deploy): pin prod image digests to ${GITHUB_REF_NAME}"
+          git push origin "$branch"
+          gh pr create \
+            --title "chore(deploy): pin prod image digests to ${GITHUB_REF_NAME}" \
+            --body "Automated by docker-publish.yml: pins \`falcoria_image_digests\` and \`falcoria_image_version\` in \`all.yml\` to the images just published for \`${GITHUB_REF_NAME}\`. Review and merge before deploying — this is the last human checkpoint before the pinned config changes." \
+            --base main \
+            --head "$branch"
