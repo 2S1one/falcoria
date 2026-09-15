@@ -173,8 +173,15 @@ generated and updates only the affected files; it never writes outside `docs/`.
 
 ## Working convention
 
-During the rebuild, build along the data flow, one file at a time:
+Every change to a non-test file goes one file at a time:
 
-**show the file → explain what it does and why → wait for "yes" → write it → next file.**
+**show the file's planned change → explain what it does and why → wait for an explicit
+"yes" to that specific file → write it → next file.**
 
-Do not write or edit files before the approach is agreed.
+- Never describe or diff more than one file in the same message — a change spanning N
+  files is N separate show/approve/write cycles, not one plan followed by a batch of edits.
+- Approval must be unambiguous and about that specific file. Answering an unrelated
+  question, or approving the general direction, is not approval to write.
+- Test files are exempt — write and update them without waiting for approval.
+- The only way to skip approval on a non-test file is the user saying so explicitly, for
+  that change.
