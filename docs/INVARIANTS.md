@@ -83,6 +83,20 @@ breaks if violated, the file it lives in.
   base62 token carries ~357 bits of entropy, so this is not a password hash and doesn't need
   salting/slow hashing — don't "fix" this to bcrypt/argon2 without revisiting the entropy
   argument. `apps/scanledger/src/falcoria_scanledger/auth/tokens.py`.
+- **`port_prevalence` has no row for a port/protocol nmap-services never studied — a missing
+  row is not the same as `score = 0`.** Code joining against it must use an outer join and
+  treat `NULL` as "no data," not coerce it to zero. `score` is CHECK-constrained to `[0, 1]`.
+  `apps/scanledger/src/falcoria_scanledger/port_prevalence/models.py`.
+- **`port_prevalence` is refreshed by wholesale delete-then-bulk-insert, in one transaction,
+  from a script — never by app code.** `sync.py` raises rather than run if parsing the
+  vendored file yields zero entries, so a broken/missing source file can't silently empty the
+  table. Nothing has a foreign key into this table, so the wipe is safe.
+  `apps/scanledger/src/falcoria_scanledger/port_prevalence/sync.py`.
+- **The vendored `nmap-services` data file is NPSL-licensed, not falcoria's own code.** Its
+  own header states "(C) 1996-2025 by Insecure.Com LLC... distributed under the Nmap Public
+  Source license." A known, accepted risk — see `refactor/known_risk_nmap_services_license.md`
+  (gitignored, not part of this `docs/` tree) for the full reasoning and revisit trigger.
+  `apps/scanledger/src/falcoria_scanledger/port_prevalence/data/nmap-services`.
 
 ## Cross-service query/status semantics (tasker)
 

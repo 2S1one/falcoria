@@ -21,6 +21,7 @@ from falcoria_scanledger.auth import models as auth_models  # noqa: F401
 from falcoria_scanledger.database import _database_url
 from falcoria_scanledger.history import models as history_models  # noqa: F401
 from falcoria_scanledger.ips import models as ips_models  # noqa: F401
+from falcoria_scanledger.port_prevalence import models as port_prevalence_models  # noqa: F401
 from falcoria_scanledger.projects import models as projects_models  # noqa: F401
 
 config = context.config
