@@ -148,6 +148,18 @@ uv run pyright
 uv run pytest
 ```
 
+## Documentation
+
+`docs/` is a generated navigation map for agents (and humans): one master index
+(`docs/MAP.md`) plus focused files — architecture, structure, navigation, invariants,
+integrations. It is produced by the `project-doc-map` skill, committed at
+`.claude/skills/project-doc-map/` so every session in this repo has it, not just the one that
+generated it.
+
+After changes that touch source code — not docs-only, not pure formatting — run
+`/project-doc-map` before calling a task done. It reads what changed since the docs were last
+generated and updates only the affected files; it never writes outside `docs/`.
+
 ## Tests
 
 - `pytest`; plain `test_*` functions, no `Test*` classes; mirror the source tree under
