@@ -27,10 +27,20 @@ class CommonScanOpts(BaseModel):
     max_rate: int | None = Field(default=None, ge=1, le=30000, description="--max-rate")
 
 
+class ScanType(str, Enum):
+    """TCP scan technique for the open-ports phase."""
+
+    SYN = "syn"
+    CONNECT = "connect"
+
+
 class OpenPortsOpts(CommonScanOpts):
     """Options for the open-ports discovery phase, which always runs."""
 
     transport_protocol: PortProtocol = PortProtocol.TCP
+    scan_type: ScanType = Field(
+        default=ScanType.SYN, description="-sS (syn, default) / -sT (connect)"
+    )
     ports: list[str] = Field(min_length=1, description="Ports or ranges, e.g. '22', '1000-2000'.")
     skip_host_discovery: bool = Field(default=True, description="-Pn")
 
@@ -57,6 +67,9 @@ class ServiceOpts(CommonScanOpts):
     default_scripts: bool = Field(default=False, description="-sC")
     os_detection: bool = Field(default=False, description="-O")
     traceroute: bool = Field(default=False, description="--traceroute")
+    version_intensity: int | None = Field(
+        default=None, ge=0, le=9, description="--version-intensity"
+    )
 
 
 # --- API request/response ---
