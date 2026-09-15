@@ -7,10 +7,11 @@ system of record. Ownership splits by service: `scanledger` owns the IP/port inv
 the change-history log; `tasker` owns scan orchestration and worker-fleet visibility;
 `worker` owns nothing durable — it runs nmap and uploads results.
 
-`README.md` and `AGENTS.md` still describe `tasker`, `worker`, and `falcli` as "not created
-yet." That is stale: `tasker` and `worker` are implemented, tested, and deployed (see
-`compose.prod.yaml`, `deploy/ansible/`); only `falcli` remains unbuilt. `[ASK USER]` whether
-to update those two files — out of scope for this generation pass.
+`README.md` still describes `tasker`, `worker`, and `falcli` as "not created yet" — stale for
+`tasker`/`worker` (implemented, tested, and deployed; see `compose.prod.yaml`,
+`deploy/ansible/`), accurate for `falcli` (still unbuilt). `AGENTS.md` no longer mentions
+`falcli` at all (fixed 2026-09-15). `[ASK USER]` whether to update `README.md` — out of scope
+for this generation pass.
 
 A local, gitignored `refactor/` directory (see `/refactor/` in `.gitignore`) holds planning
 notes, a decision log, and session handoff briefs for the ongoing rebuild. Its own
@@ -39,7 +40,8 @@ pydantic-only rule forbids).
 | `scanledger` FastAPI app | HTTP, ASGI process | `apps/scanledger/src/falcoria_scanledger/main.py` (`create_app()`) |
 | `tasker` FastAPI app | HTTP, ASGI process | `apps/tasker/src/falcoria_tasker/main.py` (`create_app()`) |
 | `worker` Temporal worker | polls `port-scanner-pool` task queue | `apps/worker/src/falcoria_worker/main.py` (`main()`) |
-| Alembic migrations | manual, before scanledger starts | `apps/scanledger/migrations/` (`alembic upgrade head`) |
+| Alembic migrations | one-shot deploy container `scanledger-migrate`, before scanledger starts | `apps/scanledger/migrations/` (`alembic upgrade head`) |
+| Port-prevalence sync | one-shot deploy container `scanledger-sync-port-prevalence`, after migrate, before scanledger starts | `apps/scanledger/src/falcoria_scanledger/port_prevalence/sync.py` (`python -m falcoria_scanledger.port_prevalence.sync`) |
 
 `scanledger` and `tasker` are HTTP entrypoints; `worker` is a polling entrypoint with **no**
 HTTP server. Any number of `worker` processes can run against the same task queue — it holds

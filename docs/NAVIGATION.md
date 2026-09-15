@@ -33,6 +33,8 @@ not repeated here.
 - `apps/scanledger/src/falcoria_scanledger/ips/nmap.py` (`NmapReport`/`NmapHost`/`NmapPort`/`NmapService`) — parse-only models for inbound nmap XML, never serialized to clients. Open when the import pipeline needs a new nmap XML field.
 - `apps/scanledger/src/falcoria_scanledger/history/models.py#IPPortHistoryDB` — append-only log; uniqueness key makes re-importing the same scan a no-op. Open when changing what counts as a "change."
 - `apps/scanledger/migrations/env.py` — Alembic environment; imports every submodule's `models` so autogenerate sees the full `SQLModel.metadata`. Open when a new model file needs to be picked up by autogenerate.
+- `apps/scanledger/src/falcoria_scanledger/port_prevalence/parser.py#parse_nmap_services` — turns `nmap-services`-format lines into `ParsedPortPrevalence(number, protocol, score)`, skipping comments/blanks and protocols outside `PortProtocol` (e.g. `sctp`). Open when the source file's format needs re-parsing logic.
+- `apps/scanledger/src/falcoria_scanledger/port_prevalence/sync.py#sync_port_prevalence` — delete-all-then-bulk-insert of `port_prevalence` from parsed entries, one transaction; raises on an empty entry list rather than emptying the table. Open when changing how the reference table gets (re)populated.
 
 ### tasker
 
@@ -71,3 +73,4 @@ not repeated here.
 - **`apps/worker/config.py` (`AppSettings.window_size`)**: read once at import time in `workflows.py`, not inside `run()` — the Temporal sandbox blocks the `.env` file I/O a runtime settings read would need. Changing this to a runtime read will break under the sandbox; see `INVARIANTS.md`.
 - **Any app's `.github/workflows/ci.yml` docker filter list** (`changes` job): must be kept in sync with that app's `pyproject.toml` `falcoria-*` dependencies, or `docker-build-check` stops rebuilding the image on a real change.
 - **`deploy/ansible/` anything**: has its own `AGENTS.md` with stricter rules (zero-trust ports, PKI via `community.crypto` only, idempotence). Read it before editing, not just this file.
+- **`port_prevalence/data/nmap-services`**: refreshing it (re-download, replace, re-run `sync.py`) also means re-running `sync.py` against every environment's database — the vendored copy and the `port_prevalence` table can silently drift apart otherwise. Not yet exposed through any API — see `port_prevalence` in `STRUCTURE.md`.

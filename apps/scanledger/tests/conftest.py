@@ -29,6 +29,7 @@ from falcoria_scanledger.database import get_session
 from falcoria_scanledger.history import models as history_models  # noqa: F401
 from falcoria_scanledger.ips import models as ips_models  # noqa: F401
 from falcoria_scanledger.main import create_app
+from falcoria_scanledger.port_prevalence import models as port_prevalence_models  # noqa: F401
 from falcoria_scanledger.projects import models as projects_models  # noqa: F401
 
 _MAINTENANCE_DB = "scanledger"
