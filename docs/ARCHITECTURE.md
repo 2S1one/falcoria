@@ -40,8 +40,8 @@ pydantic-only rule forbids).
 | `scanledger` FastAPI app | HTTP, ASGI process | `apps/scanledger/src/falcoria_scanledger/main.py` (`create_app()`) |
 | `tasker` FastAPI app | HTTP, ASGI process | `apps/tasker/src/falcoria_tasker/main.py` (`create_app()`) |
 | `worker` Temporal worker | polls `port-scanner-pool` task queue | `apps/worker/src/falcoria_worker/main.py` (`main()`) |
-| Alembic migrations | manual, before scanledger starts | `apps/scanledger/migrations/` (`alembic upgrade head`) |
-| Port-prevalence sync | manual, deploy-time (not yet wired into a deploy container) | `apps/scanledger/src/falcoria_scanledger/port_prevalence/sync.py` (`python -m falcoria_scanledger.port_prevalence.sync`) |
+| Alembic migrations | one-shot deploy container `scanledger-migrate`, before scanledger starts | `apps/scanledger/migrations/` (`alembic upgrade head`) |
+| Port-prevalence sync | one-shot deploy container `scanledger-sync-port-prevalence`, after migrate, before scanledger starts | `apps/scanledger/src/falcoria_scanledger/port_prevalence/sync.py` (`python -m falcoria_scanledger.port_prevalence.sync`) |
 
 `scanledger` and `tasker` are HTTP entrypoints; `worker` is a polling entrypoint with **no**
 HTTP server. Any number of `worker` processes can run against the same task queue — it holds

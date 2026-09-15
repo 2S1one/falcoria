@@ -96,6 +96,18 @@ services:
       <<: *scanledger-db
     command: ["alembic", "-c", "apps/scanledger/alembic.ini", "upgrade", "head"]
 
+  scanledger-sync-port-prevalence:
+    image: {{ falcoria_image_registry }}/falcoria-scanledger:{{ falcoria_image_tag }}
+    restart: "no"
+    depends_on:
+      scanledger-migrate:
+        condition: service_completed_successfully
+    networks:
+      - falcoria-internal
+    environment:
+      <<: *scanledger-db
+    command: ["python", "-m", "falcoria_scanledger.port_prevalence.sync"]
+
   scanledger:
     image: {{ falcoria_image_registry }}/falcoria-scanledger:{{ falcoria_image_tag }}
     restart: unless-stopped
@@ -103,6 +115,8 @@ services:
       postgres:
         condition: service_healthy
       scanledger-migrate:
+        condition: service_completed_successfully
+      scanledger-sync-port-prevalence:
         condition: service_completed_successfully
     networks:
       - falcoria-internal
