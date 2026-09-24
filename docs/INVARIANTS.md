@@ -83,9 +83,11 @@ breaks if violated, the file it lives in.
   `scanledger` starts — this is stated in the `main.py` lifespan docstring, not enforced in
   code. Starting the app against an unmigrated database will fail on first query, not at
   startup. `apps/scanledger/src/falcoria_scanledger/main.py`.
-- **The three seed tokens (`SCANLEDGER_ADMIN_TOKEN`, `_TASKER_TOKEN`, `_WORKER_TOKEN`) must
-  all differ.** `ensure_primary_users` raises `ValueError` at startup if any two match — a
-  config mistake fails loudly instead of silently merging identities.
+- **The seed tokens (`SCANLEDGER_ADMIN_TOKEN`, `_TASKER_TOKEN`, `_WORKER_TOKEN`, and the
+  optional `_ASM_TOKEN`) must all differ.** `ensure_primary_users` raises `ValueError` at
+  startup if any two match — a config mistake fails loudly instead of silently merging
+  identities. An empty `SCANLEDGER_ASM_TOKEN` seeds no `asm` account; clearing it later does
+  not delete one already seeded.
   `apps/scanledger/src/falcoria_scanledger/auth/service.py`.
 - **Auth tokens are hashed with a single unsalted SHA-256 round, deliberately.** A 60-char
   base62 token carries ~357 bits of entropy, so this is not a password hash and doesn't need
@@ -118,6 +120,11 @@ breaks if violated, the file it lives in.
   gets its `txid` at its first write; an import waiting on the row locks has none yet, so
   feed order matches the order imports changed each IP. A write before the lock breaks
   that ordering. `ips/service.py#_load`.
+- **scanledger's connections end any session idle inside a transaction for 60 s**
+  (`idle_in_transaction_session_timeout` via `connect_args` in `get_engine`). Such a session
+  would otherwise stall the event feed for every project. Code that waits on non-DB work
+  mid-transaction for longer than that gets its connection terminated.
+  `apps/scanledger/src/falcoria_scanledger/database.py`.
 - **The feed only works on the primary.** `pg_current_snapshot()` on a read replica is not
   verified for this use. `events/service.py#read_events`.
 

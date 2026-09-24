@@ -127,6 +127,7 @@ services:
       SCANLEDGER_ADMIN_TOKEN: ${SCANLEDGER_ADMIN_TOKEN}
       SCANLEDGER_TASKER_TOKEN: ${SCANLEDGER_TASKER_TOKEN}
       SCANLEDGER_WORKER_TOKEN: ${SCANLEDGER_WORKER_TOKEN}
+      SCANLEDGER_ASM_TOKEN: ${SCANLEDGER_ASM_TOKEN:-}
       WEB_CONCURRENCY: {{ scanledger_workers }}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]

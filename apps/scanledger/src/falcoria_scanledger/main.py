@@ -34,6 +34,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
             admin_token=settings.admin_token.get_secret_value(),
             tasker_token=settings.tasker_token.get_secret_value(),
             worker_token=settings.worker_token.get_secret_value(),
+            asm_token=settings.asm_token.get_secret_value() if settings.asm_token else None,
         )
         await session.commit()
     yield

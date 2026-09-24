@@ -27,6 +27,7 @@ PG_PASSWORD=$(generate_secret)
 ADMIN_TOKEN=$(generate_secret)
 TASKER_TOKEN=$(generate_secret)
 WORKER_TOKEN=$(generate_secret)
+ASM_TOKEN=$(generate_secret)
 
 cat <<EOF > "${OUTPUT_FILE}"
 # Production environment configuration for Falcoria
@@ -39,6 +40,7 @@ POSTGRES_PASSWORD=${PG_PASSWORD}
 SCANLEDGER_ADMIN_TOKEN=${ADMIN_TOKEN}
 SCANLEDGER_TASKER_TOKEN=${TASKER_TOKEN}
 SCANLEDGER_WORKER_TOKEN=${WORKER_TOKEN}
+SCANLEDGER_ASM_TOKEN=${ASM_TOKEN}
 
 # Service ports and logging
 TASKER_PORT=8000
