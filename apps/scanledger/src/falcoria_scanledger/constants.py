@@ -14,6 +14,7 @@ class Tag(str, Enum):
     PROJECTS = "projects"
     IPS = "ips"
     HISTORY = "history"
+    EVENTS = "events"
 
 
 # OpenAPI `responses=` entries for any router mounted behind an auth dependency.

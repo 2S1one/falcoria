@@ -19,6 +19,8 @@ from sqlmodel.sql.sqltypes import AutoString
 
 from falcoria_scanledger.auth import models as auth_models  # noqa: F401
 from falcoria_scanledger.database import _database_url
+from falcoria_scanledger.events import models as events_models  # noqa: F401
+from falcoria_scanledger.events.models import Xid8
 from falcoria_scanledger.history import models as history_models  # noqa: F401
 from falcoria_scanledger.ips import models as ips_models  # noqa: F401
 from falcoria_scanledger.port_prevalence import models as port_prevalence_models  # noqa: F401
@@ -33,13 +35,18 @@ target_metadata = SQLModel.metadata
 
 
 def _render_item(type_: str, obj: Any, autogen_context: AutogenContext) -> str | Literal[False]:
-    """Render SQLModel's ``AutoString`` as plain ``sa.String()`` in revisions.
+    """Render custom column types in revisions.
 
-    Keeps generated migrations free of a ``sqlmodel`` import. The models never
-    set a string length, so no argument is lost.
+    SQLModel's ``AutoString`` becomes plain ``sa.String()``, which keeps revisions
+    free of a ``sqlmodel`` import; the models never set a string length, so no
+    argument is lost. ``Xid8`` has no SQLAlchemy equivalent, so the revision
+    imports it from the events models.
     """
     if type_ == "type" and isinstance(obj, AutoString):
         return "sa.String()"
+    if type_ == "type" and isinstance(obj, Xid8):
+        autogen_context.imports.add("from falcoria_scanledger.events.models import Xid8")
+        return "Xid8()"
     return False
 
 

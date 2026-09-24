@@ -1,18 +1,19 @@
 """initial schema
 
-Revision ID: cff55d0cb4ba
+Revision ID: 8011c58c0251
 Revises: 
-Create Date: 2026-09-15 21:13:00.965485
+Create Date: 2026-09-24 20:03:13.540814
 
 """
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-
+from falcoria_scanledger.events.models import Xid8
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = 'cff55d0cb4ba'
+revision: str = '8011c58c0251'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -95,6 +96,18 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_observed_hostnames_hostname'), 'observed_hostnames', ['hostname'], unique=False)
     op.create_index(op.f('ix_observed_hostnames_project_id'), 'observed_hostnames', ['project_id'], unique=False)
+    op.create_table('outbox_events',
+    sa.Column('id', sa.BigInteger(), nullable=False),
+    sa.Column('event_id', sa.Uuid(), nullable=False),
+    sa.Column('txid', Xid8(), server_default=sa.text('pg_current_xact_id()'), nullable=False),
+    sa.Column('project_id', sa.Uuid(), nullable=False),
+    sa.Column('payload', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+    sa.Column('created_at', sa.Integer(), nullable=False),
+    sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('event_id')
+    )
+    op.create_index('ix_outbox_events_project_id_txid_id', 'outbox_events', ['project_id', 'txid', 'id'], unique=False)
     op.create_table('project_member_link',
     sa.Column('project_id', sa.Uuid(), nullable=False),
     sa.Column('user_id', sa.Uuid(), nullable=False),
@@ -153,6 +166,8 @@ def downgrade() -> None:
     op.drop_table('observed_hostname_ip_link')
     op.drop_index(op.f('ix_project_member_link_user_id'), table_name='project_member_link')
     op.drop_table('project_member_link')
+    op.drop_index('ix_outbox_events_project_id_txid_id', table_name='outbox_events')
+    op.drop_table('outbox_events')
     op.drop_index(op.f('ix_observed_hostnames_project_id'), table_name='observed_hostnames')
     op.drop_index(op.f('ix_observed_hostnames_hostname'), table_name='observed_hostnames')
     op.drop_table('observed_hostnames')

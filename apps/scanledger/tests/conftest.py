@@ -14,7 +14,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import URL, text
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -26,6 +26,7 @@ from falcoria_scanledger.auth import models  # noqa: F401
 from falcoria_scanledger.auth.dependencies import require_admin
 from falcoria_scanledger.auth.models import UserDB
 from falcoria_scanledger.database import get_session
+from falcoria_scanledger.events import models as events_models  # noqa: F401
 from falcoria_scanledger.history import models as history_models  # noqa: F401
 from falcoria_scanledger.ips import models as ips_models  # noqa: F401
 from falcoria_scanledger.main import create_app
@@ -75,7 +76,9 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     transitive fixture closure before collection.
     """
     for item in items:
-        if isinstance(item, pytest.Function) and "session" in item.fixturenames:
+        if isinstance(item, pytest.Function) and (
+            "session" in item.fixturenames or "committing_sessions" in item.fixturenames
+        ):
             item.add_marker(pytest.mark.postgres)
 
 
@@ -112,6 +115,23 @@ async def session(_schema: None) -> AsyncIterator[AsyncSession]:
         if transaction.is_active:
             await transaction.rollback()
         await connection.close()
+        await engine.dispose()
+
+
+@pytest.fixture
+async def committing_sessions(_schema: None) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """Yields a session factory whose commits really persist.
+
+    For code that must observe committed state from another transaction (the
+    event feed hides rows of transactions still running). Every project, and
+    everything cascading from it, is truncated afterwards.
+    """
+    engine = create_async_engine(_pg_url(_TEST_DB))
+    try:
+        yield async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(text("TRUNCATE projects CASCADE"))
         await engine.dispose()
 
 
