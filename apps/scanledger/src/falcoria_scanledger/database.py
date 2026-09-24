@@ -26,7 +26,14 @@ def _database_url() -> URL:
 @lru_cache
 def get_engine() -> AsyncEngine:
     """Returns the process-wide async engine, created on first use."""
-    return create_async_engine(_database_url(), echo=get_db_settings().echo, pool_pre_ping=True)
+    return create_async_engine(
+        _database_url(),
+        echo=get_db_settings().echo,
+        pool_pre_ping=True,
+        # An open transaction holds back the event feed for every project, so a
+        # session left idle inside one is ended by the server after 60 s.
+        connect_args={"server_settings": {"idle_in_transaction_session_timeout": "60000"}},
+    )
 
 
 @lru_cache
