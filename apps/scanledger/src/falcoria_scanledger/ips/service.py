@@ -4,6 +4,7 @@ Import path: collect -> dedup -> reconcile -> apply. Reads project IPs with
 their ports and hostnames eager-loaded.
 """
 
+import uuid
 from typing import Any
 from uuid import UUID
 
@@ -15,6 +16,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from falcoria_contracts.enums import ImportMode
 from falcoria_contracts.port import Port
+from falcoria_scanledger.events.build import build_event
+from falcoria_scanledger.events.service import write_events
 from falcoria_scanledger.history.models import IPPortHistoryDB
 from falcoria_scanledger.ips.dedup import dedup_batch
 from falcoria_scanledger.ips.facets import (
@@ -92,7 +95,8 @@ async def apply_import(
         return []
 
     stored = await _load(session, project_id, [e.ip for e in entries])
-    changesets = [apply_mode(mode, _snapshot(stored.get(e.ip)), e) for e in entries]
+    snapshots = {e.ip: _snapshot(stored.get(e.ip)) for e in entries}
+    changesets = [apply_mode(mode, snapshots[e.ip], e) for e in entries]
 
     hostnames = await _ensure_hostnames(session, project_id, changesets)
     for cs in changesets:
@@ -103,17 +107,25 @@ async def apply_import(
             _update(existing, cs, hostnames)
     if track_history:
         await _write_history(session, project_id, changesets, scan_id)
+    events = [
+        build_event(uuid.uuid4(), project_id, scan_id, snapshots[cs.ip], cs) for cs in changesets
+    ]
+    write_events(session, [e for e in events if e is not None])
 
     await session.flush()
     return changesets
 
 
 async def _load(session: AsyncSession, project_id: UUID, addrs: list[str]) -> dict[str, IPDB]:
+    # FOR UPDATE, and this must stay the import's first statement: an import
+    # waiting on these locks has no transaction id yet, so the feed's
+    # (txid, id) order matches the order imports changed each IP.
     rows = (
         await session.exec(
             select(IPDB)
             .where(IPDB.project_id == project_id, col(IPDB.ip).in_(addrs))
             .options(*_loaders())
+            .with_for_update()
         )
     ).all()
     return {r.ip: r for r in rows}

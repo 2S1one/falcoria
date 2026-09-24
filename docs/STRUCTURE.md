@@ -49,6 +49,7 @@ apps/scanledger/src/falcoria_scanledger/
   projects/                 projects + project membership
   ips/                       IP/port inventory: models, nmap-XML import pipeline, search, facets, router
   history/                    append-only port-change log (read + bulk-delete), written by ips/
+  events/                     transactional outbox of per-IP change events + cursor feed, written by ips/
   port_prevalence/             port/protocol commonness reference data: model, nmap-services parser,
                                  wipe-and-reload sync script; not yet wired into any router
 apps/scanledger/migrations/  Alembic: env.py, versions/, script.py.mako

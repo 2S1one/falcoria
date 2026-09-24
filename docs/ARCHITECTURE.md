@@ -3,8 +3,8 @@
 Falcoria is a network-scanning platform: it accepts a scan request for a project (a list of
 hosts plus nmap-style options), runs the scan through a Temporal workflow on a pool of
 worker processes, and stores the resulting port/service inventory in a Postgres-backed
-system of record. Ownership splits by service: `scanledger` owns the IP/port inventory and
-the change-history log; `tasker` owns scan orchestration and worker-fleet visibility;
+system of record. Ownership splits by service: `scanledger` owns the IP/port inventory,
+the change-history log, and the per-project IP change event feed; `tasker` owns scan orchestration and worker-fleet visibility;
 `worker` owns nothing durable — it runs nmap and uploads results.
 
 `README.md` still describes `tasker`, `worker`, and `falcli` as "not created yet" — stale for
@@ -117,6 +117,32 @@ client -> GET /api/workers                          [tasker: workers/router.get_
 This is distinct from `apps/worker` the service — `workers/` here is tasker's read-only view
 of which worker processes are currently polling, built from Temporal's own poller metadata,
 not a separate registry.
+
+## Runtime flow: scan import and event feed (scanledger)
+
+```
+worker / client
+  -> POST /api/projects/{project_id}/ips/import         [ips/router.import_scan]
+       -> ips/service.import_scan() -> apply_import()     (one transaction, request-scoped)
+            -> _load(): SELECT ... FOR UPDATE on the batch's existing IPs   (first statement)
+            -> ips/modes.apply_mode() per IP -> ChangeSet   (pure)
+            -> _create() / _update()                       ports, hostnames
+            -> [track_history] _write_history()            ip_port_history rows
+            -> events/build.build_event(stored snapshot, ChangeSet) -> IPChangedEvent | None
+            -> events/service.write_events()               outbox_events rows, same transaction
+       <- commit by get_session()
+
+consumer (ASM)
+  -> GET /api/projects/{project_id}/events?after=<txid.id>&limit=N   [events/router.read_events]
+       -> events/service.read_events()
+            -> rows after the (txid, id) cursor, only from transactions older than every
+               transaction still running (pg_snapshot_xmin), ordered by (txid, id)
+       <- EventPage(items, next_cursor)
+```
+
+Branch points: `build_event` returns None (no outbox row) unless a hostname or open port
+appeared or disappeared, or a service/product/version changed. The feed holds back rows of a
+still-running import instead of skipping them — see `INVARIANTS.md`.
 
 ## Auth model
 

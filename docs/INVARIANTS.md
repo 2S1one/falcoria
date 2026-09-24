@@ -106,6 +106,21 @@ breaks if violated, the file it lives in.
   (gitignored, not part of this `docs/` tree) for the full reasoning and revisit trigger.
   `apps/scanledger/src/falcoria_scanledger/port_prevalence/data/nmap-services`.
 
+- **Outbox rows are written in the import's own transaction, never after commit.**
+  `events/service.write_events` only stages rows on the session. Writing them in a separate
+  step after commit loses events on a crash between the two. `ips/service.py#apply_import`.
+- **The feed cursor is `(txid, id)`, never `id` alone.** `id` is assigned at INSERT, not at
+  COMMIT, so a lower `id` can become visible after a higher one; a cursor on `id` would skip
+  it forever. `read_events` also filters `txid < pg_snapshot_xmin(pg_current_snapshot())`,
+  so rows of a still-running transaction are held back. A long or idle-in-transaction
+  session anywhere in the database delays the whole feed (no loss). `events/service.py`.
+- **`_load`'s `SELECT ... FOR UPDATE` must stay the import's first statement.** A transaction
+  gets its `txid` at its first write; an import waiting on the row locks has none yet, so
+  feed order matches the order imports changed each IP. A write before the lock breaks
+  that ordering. `ips/service.py#_load`.
+- **The feed only works on the primary.** `pg_current_snapshot()` on a read replica is not
+  verified for this use. `events/service.py#read_events`.
+
 ## Cross-service query/status semantics (tasker)
 
 - **`query_progress` uses an explicit short timeout, not Temporal's default 30s gRPC

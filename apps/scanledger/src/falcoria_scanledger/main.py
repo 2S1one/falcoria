@@ -12,6 +12,7 @@ from falcoria_scanledger.auth.service import ensure_primary_users
 from falcoria_scanledger.config import Env, get_app_settings
 from falcoria_scanledger.constants import AUTH_RESPONSES, Tag
 from falcoria_scanledger.database import dispose_engine, get_sessionmaker
+from falcoria_scanledger.events.router import router as events_router
 from falcoria_scanledger.exceptions import register_exception_handlers
 from falcoria_scanledger.history.router import router as history_router
 from falcoria_scanledger.ips.router import router as ips_router
@@ -77,6 +78,12 @@ def create_app() -> FastAPI:
     app.include_router(
         history_router,
         prefix=f"{settings.api_prefix}/projects/{{project_id}}/history",
+        dependencies=[Depends(validate_project_access)],
+        responses=AUTH_RESPONSES,
+    )
+    app.include_router(
+        events_router,
+        prefix=f"{settings.api_prefix}/projects/{{project_id}}/events",
         dependencies=[Depends(validate_project_access)],
         responses=AUTH_RESPONSES,
     )

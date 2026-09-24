@@ -1,6 +1,6 @@
 # Map
 
-Generated at commit `3bb21b59291069c6300951a12af6053c21990c74` on branch `main`.
+Generated at commit `265397a6685dacdb4f9189aad127cc3adc3a7d65` on branch `feat/scanledger-event-outbox`.
 
 Falcoria: a network-scanning platform, uv-workspace monorepo, three deployable services
 (`scanledger`, `tasker`, `worker`) plus four shared libraries. `README.md` describes
@@ -10,7 +10,7 @@ Falcoria: a network-scanning platform, uv-workspace monorepo, three deployable s
 ## Files in this set
 
 - **`ARCHITECTURE.md`** — identity, entrypoints table, runtime-flow ASCII diagrams (run a
-  scan, check status/cancel, worker-fleet visibility), auth model, deployment shape. Open
+  scan, check status/cancel, worker-fleet visibility, scan import + event feed), auth model, deployment shape. Open
   first for "what does this system do and how does a request flow through it."
 - **`STRUCTURE.md`** — directory → purpose tables (root, then per-service `src/` layout, three
   levels deep). Open for "what lives where," not "where do I start."
