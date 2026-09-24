@@ -35,10 +35,15 @@ pytest) will fail or read stale defaults.
   tests never see each other's writes, and no per-test cleanup code is needed.
   `_MAINTENANCE_DB`/`_TEST_DB` are the two database names involved.
 - Every submodule's `models` module (`auth.models`, `projects.models`, `ips.models`,
-  `history.models`, `port_prevalence.models`) is imported at the top of this conftest for the
+  `history.models`, `events.models`, `port_prevalence.models`) is imported at the top of this conftest for the
   side effect of registering its tables on `SQLModel.metadata` (`# noqa: F401`) — a new
   submodule's models file must be added to this import list or its tables won't exist in the
   test schema.
+
+- `committing_sessions` yields a session factory whose commits really persist, then runs
+  `TRUNCATE projects CASCADE`. Use it only for code that must see committed state from
+  another transaction: the event feed hides rows of the `session` fixture's never-committed
+  transaction, so feed tests (`tests/events/test_feed.py`) need it.
 
 ## anyio
 
