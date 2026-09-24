@@ -149,8 +149,9 @@ still-running import instead of skipping them — see `INVARIANTS.md`.
 Every service-to-service call carries a static bearer token; `scanledger` is the sole source
 of truth for who a token belongs to.
 
-- `scanledger` seeds three primary accounts (`admin`, `tasker`, `worker`) from env-configured
-  tokens on every startup (`auth/service.py::ensure_primary_users`); other users are created
+- `scanledger` seeds three primary accounts (`admin`, `tasker`, `worker`), plus an `asm`
+  account for the event-feed consumer when `SCANLEDGER_ASM_TOKEN` is set, from env-configured
+  tokens on every startup; all are admins, so they reach every project (`auth/service.py::ensure_primary_users`); other users are created
   through the admin-gated `POST /admin/users` route.
 - `tasker` and `worker` each hold their own `SCANLEDGER_TOKEN`-equivalent setting
   (`TASKER_SCANLEDGER_TOKEN` / `WORKER_SCANLEDGER_TOKEN`) and use it as a plain bearer token

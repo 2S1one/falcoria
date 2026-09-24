@@ -1,6 +1,6 @@
 # Map
 
-Generated at commit `265397a6685dacdb4f9189aad127cc3adc3a7d65` on branch `feat/scanledger-event-outbox`.
+Generated at commit `b282a5ebe3757b166f0e5ed89324024b1889ce57` on branch `chore/scanledger-feed-guardrails`.
 
 Falcoria: a network-scanning platform, uv-workspace monorepo, three deployable services
 (`scanledger`, `tasker`, `worker`) plus four shared libraries. `README.md` describes

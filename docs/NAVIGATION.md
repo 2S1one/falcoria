@@ -27,7 +27,7 @@ not repeated here.
 
 - `apps/scanledger/src/falcoria_scanledger/database.py#get_session` — request-scoped unit-of-work dependency; commits on success, rolls back on exception. Open when touching any DB-writing service function to understand who owns the transaction.
 - `apps/scanledger/src/falcoria_scanledger/auth/tokens.py#generate_token` / `#hash_token` — 60-char base62 token generation and unsalted SHA-256 hashing. Open when changing token format or lookup.
-- `apps/scanledger/src/falcoria_scanledger/auth/service.py#ensure_primary_users` — upserts the `admin`/`tasker`/`worker` seed accounts on every startup. Open when changing how service-account tokens are provisioned.
+- `apps/scanledger/src/falcoria_scanledger/auth/service.py#ensure_primary_users` — upserts the `admin`/`tasker`/`worker` (and optional `asm`) seed accounts on every startup. Open when changing how service-account tokens are provisioned.
 - `apps/scanledger/src/falcoria_scanledger/projects/dependencies.py#validate_project_access` — the single membership/admin gate mounted on `ips_router`, `history_router` and `events_router`. Open when changing project-level authorization.
 - `apps/scanledger/src/falcoria_scanledger/ips/reconcile.py#close_stale_port` — REPLACE-mode close-rule logic (absent-but-out-of-range ports stay open). Open when changing import-mode merge semantics.
 - `apps/scanledger/src/falcoria_scanledger/ips/nmap.py` (`NmapReport`/`NmapHost`/`NmapPort`/`NmapService`) — parse-only models for inbound nmap XML, never serialized to clients. Open when the import pipeline needs a new nmap XML field.
