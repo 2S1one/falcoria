@@ -9,6 +9,8 @@ vault_postgres_password: "replace_with_strong_pg_password"
 vault_scanledger_admin_token: "replace_with_strong_admin_token"
 vault_scanledger_tasker_token: "replace_with_strong_tasker_token"
 vault_scanledger_worker_token: "replace_with_strong_worker_token"
+# Optional: seeds an `asm` account for the event-feed consumer; omit to skip.
+vault_scanledger_asm_token: "replace_with_strong_asm_token"
 
 # Temporal Web UI credentials (for Caddy basicauth)
 vault_temporal_ui_user: "admin"

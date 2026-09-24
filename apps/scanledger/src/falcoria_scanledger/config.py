@@ -36,6 +36,10 @@ class AppSettings(BaseAppSettings):
             ``SCANLEDGER_TASKER_TOKEN``. Must differ from the other seed tokens.
         worker_token: bearer token for the seeded ``worker`` account. Env
             ``SCANLEDGER_WORKER_TOKEN``. Must differ from the other seed tokens.
+        asm_token: bearer token for the seeded ``asm`` account, the event-feed
+            consumer. Env ``SCANLEDGER_ASM_TOKEN``. Optional: unset or empty
+            means no ``asm`` account is seeded. Must differ from the other seed
+            tokens.
         max_report_bytes: reject a scan-report upload larger than this. Env
             ``SCANLEDGER_MAX_REPORT_BYTES``. Default 25 MiB.
         log_level: root logger level (``DEBUG``/``INFO``/``WARNING``/...). Env
@@ -48,6 +52,7 @@ class AppSettings(BaseAppSettings):
     admin_token: SecretStr
     tasker_token: SecretStr
     worker_token: SecretStr
+    asm_token: SecretStr | None = None
     max_report_bytes: int = 25 * 1024 * 1024
     log_level: str = "INFO"
 

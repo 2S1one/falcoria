@@ -97,3 +97,45 @@ async def test_ensure_primary_users_rejects_any_equal_pair(
         await service.ensure_primary_users(
             session, admin_token=admin_token, tasker_token=tasker_token, worker_token=worker_token
         )
+
+
+async def test_ensure_primary_users_seeds_asm_when_token_set(session: AsyncSession) -> None:
+    await service.ensure_primary_users(
+        session, admin_token="a-tok", tasker_token="t-tok", worker_token="w-tok", asm_token="m-tok"
+    )
+
+    rows = await _primary_users(session)
+    assert [u.username for u in rows] == ["admin", "asm", "tasker", "worker"]
+    asm = rows[1]
+    assert asm.is_admin
+    assert asm.hashed_token == tokens.hash_token("m-tok")
+
+
+@pytest.mark.parametrize("asm_token", [None, ""])
+async def test_ensure_primary_users_skips_asm_when_token_unset(
+    session: AsyncSession, asm_token: str | None
+) -> None:
+    await service.ensure_primary_users(
+        session,
+        admin_token="a-tok",
+        tasker_token="t-tok",
+        worker_token="w-tok",
+        asm_token=asm_token,
+    )
+
+    rows = await _primary_users(session)
+    assert [u.username for u in rows] == ["admin", "tasker", "worker"]
+
+
+@pytest.mark.parametrize("asm_token", ["a-tok", "t-tok", "w-tok"])
+async def test_ensure_primary_users_rejects_asm_token_reuse(
+    session: AsyncSession, asm_token: str
+) -> None:
+    with pytest.raises(ValueError, match="must all differ"):
+        await service.ensure_primary_users(
+            session,
+            admin_token="a-tok",
+            tasker_token="t-tok",
+            worker_token="w-tok",
+            asm_token=asm_token,
+        )

@@ -81,20 +81,28 @@ async def _upsert_primary_user(session: AsyncSession, username: str, token: str)
 
 
 async def ensure_primary_users(
-    session: AsyncSession, *, admin_token: str, tasker_token: str, worker_token: str
+    session: AsyncSession,
+    *,
+    admin_token: str,
+    tasker_token: str,
+    worker_token: str,
+    asm_token: str | None = None,
 ) -> None:
-    """Creates or re-syncs the `admin`, `tasker`, and `worker` accounts from configuration.
+    """Creates or re-syncs the config-seeded `admin`, `tasker`, `worker`, `asm` accounts.
 
     Runs on every startup: concurrency-safe (atomic ``INSERT ... ON CONFLICT DO
     UPDATE`` keyed on username) and it overwrites each account's stored token
     hash with the configured value, so rotating a token in the environment takes
-    effect on the next boot.
+    effect on the next boot. ``asm`` is seeded only when ``asm_token`` is
+    non-empty; unsetting it later leaves an already-seeded account in place.
 
     Raises:
-        ValueError: any two of the three tokens are equal.
+        ValueError: any two of the configured tokens are equal.
     """
-    if admin_token in (tasker_token, worker_token) or tasker_token == worker_token:
-        raise ValueError("admin, tasker, and worker tokens must all differ")
-    await _upsert_primary_user(session, "admin", admin_token)
-    await _upsert_primary_user(session, "tasker", tasker_token)
-    await _upsert_primary_user(session, "worker", worker_token)
+    accounts = {"admin": admin_token, "tasker": tasker_token, "worker": worker_token}
+    if asm_token:
+        accounts["asm"] = asm_token
+    if len(set(accounts.values())) != len(accounts):
+        raise ValueError(f"{', '.join(accounts)} tokens must all differ")
+    for username, token in accounts.items():
+        await _upsert_primary_user(session, username, token)
